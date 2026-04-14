@@ -12,9 +12,9 @@ const BAR_SIZE: u64 = 10000;
 #[derive(Parser, Debug)]
 #[command(name = "btpp", author, version, about)]
 pub struct Cli {
-    #[arg(required = true)]
+    #[arg(required = true, num_args = 1..)]
     pub src_path: Vec<PathBuf>,
-    #[arg(required = true)]
+    #[arg(required = true, long)]
     // cloud be optional and use current directory, but this would be risky in combination with overwrite
     pub terrain_path: PathBuf,
     #[arg(default_value = None)]
@@ -22,9 +22,9 @@ pub struct Cli {
 
     #[arg(short, long, default_value_t = false)]
     pub overwrite: bool,
-    #[arg(default_value = "source")]
+    #[arg(long, default_value = "source")]
     pub no_data: PreprocessNoData,
-    #[arg(default_value = "source")]
+    #[arg(long, default_value = "source")]
     pub data_type: PreprocessDataType,
     #[arg(default_value_t = 16.0)]
     pub fill_radius: f32,
@@ -42,7 +42,7 @@ pub struct Cli {
     pub border_size: u32,
     #[arg(short, long = "m", default_value_t = 1)]
     pub mip_level_count: u32,
-    #[arg(default_value = "ru16")]
+    #[arg(long, default_value = "r16u")]
     pub format: AttachmentFormat,
 }
 

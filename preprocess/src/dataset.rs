@@ -141,7 +141,7 @@ impl PreprocessContext {
         create_mask: bool,
         overwrite: bool,
     ) -> PreprocessResult<(Dataset, Self)> {
-        let mut src_datasets = src_path
+        let mut src_datasets: Vec<Dataset> = src_path
             .iter()
             .map(|src_path| {
                 if src_path.is_dir() {
@@ -155,8 +155,22 @@ impl PreprocessContext {
                 let path = path.to_str().unwrap();
                 path.ends_with(".tif") || path.ends_with(".tiff")
             })
-            .map(|path| Dataset::open(path).unwrap())
-            .collect_vec();
+            .map(|path| {
+                let path_str = path.to_str().ok_or_else(|| {
+                    PreprocessError::Gdal(gdal::errors::GdalError::NullPointer {
+                        method_name: "Dataset::open",
+                        msg: format!("Invalid path: {:?}", path),
+                    })
+                })?;
+                Dataset::open(path_str)
+                    .map_err(|e| {
+                        PreprocessError::Gdal(gdal::errors::GdalError::NullPointer {
+                            method_name: "GDALOpenEx",
+                            msg: format!("Failed to open dataset at '{}'. Error: {}", path_str, e),
+                        })
+                    })
+            })
+            .collect::<PreprocessResult<Vec<_>>>()?;
 
         let src_dataset = if src_datasets.len() == 1 {
             src_datasets.remove(0)

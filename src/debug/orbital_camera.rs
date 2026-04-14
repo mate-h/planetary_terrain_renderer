@@ -135,7 +135,10 @@ pub fn orbital_camera_controller(
 
     let mut update_cursor_coords = true;
 
-    if mouse_buttons.pressed(MouseButton::Left) {
+    let shift_pressed =
+        keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+
+    if mouse_buttons.pressed(MouseButton::Left) && !shift_pressed {
         if controller.pan_data.is_none() && cursor_position.is_some() {
             controller.anchor_position = cursor_position.unwrap();
             controller.anchor_cell = cursor_cell;
@@ -154,7 +157,7 @@ pub fn orbital_camera_controller(
         controller.pan_data = None;
     }
 
-    if mouse_buttons.pressed(MouseButton::Middle) {
+    if mouse_buttons.pressed(MouseButton::Right) {
         if controller.rotation_data.is_none() && cursor_position.is_some() {
             controller.anchor_position = cursor_position.unwrap();
             controller.anchor_cell = cursor_cell;
@@ -186,7 +189,7 @@ pub fn orbital_camera_controller(
         controller.rotation_data = None;
     }
 
-    if mouse_buttons.pressed(MouseButton::Right) {
+    if mouse_buttons.pressed(MouseButton::Left) && shift_pressed {
         if controller.zoom_data.is_none() && cursor_position.is_some() {
             controller.anchor_position = cursor_position.unwrap();
             controller.anchor_cell = cursor_cell;
