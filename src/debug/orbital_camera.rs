@@ -4,9 +4,9 @@ use bevy::{
     input::{ButtonInput, mouse::AccumulatedMouseMotion},
     math::{DQuat, DVec2, DVec3, Mat4, Vec2},
     prelude::*,
-    window::{CursorGrabMode, PrimaryWindow},
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-use big_space::prelude::*;
+use big_space::prelude::{CellCoord, FloatingOrigin, Grids};
 
 fn ray_sphere_intersection(
     ray_origin: DVec3,
@@ -60,7 +60,7 @@ pub struct OrbitalCameraController {
     enabled: bool,
     cursor_coords: Vec2,
     anchor_position: DVec3,
-    anchor_cell: GridCell,
+    anchor_cell: CellCoord,
     camera_position: DVec3,
     camera_rotation: DQuat,
     pan_data: Option<PanData>,
@@ -97,11 +97,12 @@ pub fn orbital_camera_controller(
     mut camera: Query<(
         Entity,
         &mut Transform,
-        &mut GridCell,
+        &mut CellCoord,
         &PickingData,
         &mut OrbitalCameraController,
     )>,
     mut window: Query<&mut Window, With<PrimaryWindow>>,
+    mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     let Ok((camera, mut camera_transform, mut camera_cell, picking_data, mut controller)) =
         camera.single_mut()
@@ -120,6 +121,9 @@ pub fn orbital_camera_controller(
     let smoothing = (time.delta_secs_f64() / controller.time_to_reach_target).min(1.0);
     let grid = grids.parent_grid(camera).unwrap();
     let mut window = window.single_mut().unwrap();
+    let Ok(mut cursor_opts) = cursor_options.single_mut() else {
+        return;
+    };
 
     let terrain_origin = DVec3::ZERO;
     let camera_position = grid.grid_position_double(&camera_cell, &camera_transform);
@@ -219,8 +223,8 @@ pub fn orbital_camera_controller(
     // Todo: add support for scroll wheel zoom
 
     if update_cursor_coords {
-        if window.cursor_options.grab_mode == CursorGrabMode::Locked {
-            window.cursor_options.grab_mode = CursorGrabMode::None;
+        if cursor_opts.grab_mode == CursorGrabMode::Locked {
+            cursor_opts.grab_mode = CursorGrabMode::None;
             let window_size = window.size();
             window.set_cursor_position(Some(
                 Vec2::new(controller.cursor_coords.x, 1.0 - controller.cursor_coords.y)
@@ -230,7 +234,7 @@ pub fn orbital_camera_controller(
 
         controller.cursor_coords = cursor_coords;
     } else {
-        window.cursor_options.grab_mode = CursorGrabMode::Locked;
+        cursor_opts.grab_mode = CursorGrabMode::Locked;
     }
 
     if controller.pan_data.is_none()
@@ -281,7 +285,7 @@ pub fn orbital_camera_controller(
         let rotation = DQuat::from_rotation_arc(new_direction, initial_direction);
 
         new_camera_position =
-            terrain_origin + rotation * (controller.camera_position - terrain_origin);
+            terrain_origin + rotation.mul_vec3(controller.camera_position - terrain_origin);
         new_camera_rotation = rotation * controller.camera_rotation;
     }
 
@@ -330,7 +334,8 @@ pub fn orbital_camera_controller(
         let rotation =
             DQuat::from_axis_angle(camera_terrain.cross(camera_anchor).normalize(), beta);
 
-        let camera_position = terrain_origin + rotation * (c * anchor_terrain.normalize());
+        let camera_position =
+            terrain_origin + rotation.mul_vec3(c * anchor_terrain.normalize());
 
         let initial_direction = camera_terrain.normalize();
         let new_direction = (terrain_origin - camera_position).normalize();

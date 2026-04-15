@@ -1,8 +1,6 @@
 use crate::shaders::DEPTH_COPY_SHADER;
 use bevy::{
-    core_pipeline::{
-        core_3d::CORE_3D_DEPTH_FORMAT, fullscreen_vertex_shader::fullscreen_shader_vertex_state,
-    },
+    core_pipeline::{core_3d::CORE_3D_DEPTH_FORMAT, FullscreenShader},
     ecs::query::QueryItem,
     prelude::*,
     render::{
@@ -17,7 +15,7 @@ use bevy::{
         renderer::{RenderContext, RenderDevice},
         sync_world::MainEntity,
         texture::{CachedTexture, TextureCache},
-        view::{RetainedViewEntity, ViewDepthTexture, ViewTarget},
+        view::{ExtractedView, RetainedViewEntity, ViewDepthTexture, ViewTarget},
     },
 };
 use std::ops::Range;
@@ -136,7 +134,7 @@ impl TerrainViewDepthTexture {
         }
     }
 
-    pub fn get_attachment(&self) -> RenderPassDepthStencilAttachment {
+    pub fn get_attachment(&self) -> RenderPassDepthStencilAttachment<'_> {
         RenderPassDepthStencilAttachment {
             view: &self.view,
             depth_ops: Some(Operations {
@@ -187,17 +185,18 @@ pub fn prepare_terrain_depth_textures(
 
 #[derive(Resource)]
 pub struct DepthCopyPipeline {
-    layout: BindGroupLayout,
+    layout: BindGroupLayoutDescriptor,
     id: CachedRenderPipelineId,
 }
 
 impl FromWorld for DepthCopyPipeline {
     fn from_world(world: &mut World) -> Self {
-        let device = world.resource::<RenderDevice>();
+        let _device = world.resource::<RenderDevice>();
         let pipeline_cache = world.resource::<PipelineCache>();
+        let fullscreen = world.resource::<FullscreenShader>();
 
-        let layout = device.create_bind_group_layout(
-            None,
+        let layout = BindGroupLayoutDescriptor::new(
+            "depth_copy_pipeline_layout",
             &BindGroupLayoutEntries::sequential(
                 ShaderStages::FRAGMENT,
                 (texture_depth_2d_multisampled(),),
@@ -208,11 +207,11 @@ impl FromWorld for DepthCopyPipeline {
             label: None,
             layout: vec![layout.clone()],
             push_constant_ranges: Vec::new(),
-            vertex: fullscreen_shader_vertex_state(),
+            vertex: fullscreen.to_vertex_state(),
             fragment: Some(FragmentState {
                 shader: world.load_asset(DEPTH_COPY_SHADER),
                 shader_defs: vec![],
-                entry_point: "fragment".into(),
+                entry_point: Some("fragment".into()),
                 targets: vec![],
             }),
             primitive: Default::default(),
@@ -239,9 +238,8 @@ pub struct TerrainPass;
 
 impl ViewNode for TerrainPass {
     type ViewQuery = (
-        Entity,
-        MainEntity,
         &'static ExtractedCamera,
+        &'static ExtractedView,
         &'static ViewTarget,
         &'static ViewDepthTexture,
         &'static TerrainViewDepthTexture,
@@ -249,12 +247,9 @@ impl ViewNode for TerrainPass {
 
     fn run<'w>(
         &self,
-        _graph: &mut RenderGraphContext,
+        graph: &mut RenderGraphContext,
         context: &mut RenderContext<'w>,
-        (render_view, main_view, camera, target, depth, terrain_depth): QueryItem<
-            'w,
-            Self::ViewQuery,
-        >,
+        (camera, extracted_view, target, depth, terrain_depth): QueryItem<'w, '_, Self::ViewQuery>,
         world: &'w World,
     ) -> Result<(), NodeRunError> {
         let device = world.resource::<RenderDevice>();
@@ -267,13 +262,7 @@ impl ViewNode for TerrainPass {
 
         let Some(terrain_phase) = world
             .get_resource::<ViewSortedRenderPhases<TerrainItem>>()
-            .and_then(|phase| {
-                phase.get(&RetainedViewEntity {
-                    main_entity: main_view.into(),
-                    auxiliary_entity: Entity::PLACEHOLDER.into(),
-                    subview_index: 0,
-                })
-            })
+            .and_then(|phase| phase.get(&extracted_view.retained_view_entity))
         else {
             return Ok(());
         };
@@ -287,9 +276,10 @@ impl ViewNode for TerrainPass {
             aspect: TextureAspect::DepthOnly,
             ..default()
         });
+        let depth_layout = pipeline_cache.get_bind_group_layout(&depth_copy_pipeline.layout);
         let depth_copy_bind_group = device.create_bind_group(
             None,
-            &depth_copy_pipeline.layout,
+            &depth_layout,
             &BindGroupEntries::single(&terrain_depth_view),
         );
 
@@ -298,6 +288,7 @@ impl ViewNode for TerrainPass {
         let terrain_depth_stencil_attachment = Some(terrain_depth.get_attachment());
         let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
 
+        let view_entity = graph.view_entity();
         context.add_command_buffer_generation_task(move |device| {
             let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor::default());
 
@@ -313,7 +304,9 @@ impl ViewNode for TerrainPass {
                 pass.set_camera_viewport(viewport);
             }
 
-            terrain_phase.render(&mut pass, world, render_view).unwrap();
+            terrain_phase
+                .render(&mut pass, world, view_entity)
+                .unwrap();
             drop(pass);
 
             let mut pass = encoder.begin_render_pass(&RenderPassDescriptor {

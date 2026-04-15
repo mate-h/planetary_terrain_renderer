@@ -208,16 +208,20 @@ impl GpuTerrain {
 
     pub(crate) fn prepare(
         device: Res<RenderDevice>,
+        pipeline_cache: Res<PipelineCache>,
         buffers: Res<RenderAssets<GpuShaderStorageBuffer>>,
         mut gpu_terrains: ResMut<TerrainComponents<GpuTerrain>>,
     ) {
+        let layout = pipeline_cache.get_bind_group_layout(&TerrainBindGroup::bind_group_layout_descriptor(
+            &device,
+        ));
         for gpu_terrain in &mut gpu_terrains.values_mut() {
             let terrain_buffer = buffers.get(&gpu_terrain.terrain_buffer).unwrap();
 
             // Todo: be smarter about bind group recreation
             gpu_terrain.terrain_bind_group = Some(device.create_bind_group(
                 "terrain_bind_group",
-                &TerrainBindGroup::bind_group_layout(&device),
+                &layout,
                 &BindGroupEntries::sequential((
                     terrain_buffer.buffer.as_entire_binding(),
                     &gpu_terrain.attachment_buffer,
@@ -246,8 +250,8 @@ impl<const I: usize, P: PhaseItem> RenderCommand<P> for SetTerrainBindGroup<I> {
     #[inline]
     fn render<'w>(
         item: &P,
-        _: ROQueryItem<'w, Self::ViewQuery>,
-        _: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        _: ROQueryItem<'w, '_, Self::ViewQuery>,
+        _: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         gpu_terrains: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {

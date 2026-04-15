@@ -13,14 +13,12 @@ use bevy::{
         renderer::{RenderContext, RenderDevice},
     },
 };
+use bevy::shader::ShaderDefVal;
 use strum::IntoEnumIterator;
 
-pub(crate) fn create_mip_layout(
-    device: &RenderDevice,
-    format: AttachmentFormat,
-) -> BindGroupLayout {
-    device.create_bind_group_layout(
-        None,
+pub(crate) fn create_mip_layout_descriptor(format: AttachmentFormat) -> BindGroupLayoutDescriptor {
+    BindGroupLayoutDescriptor::new(
+        "mip_layout",
         &BindGroupLayoutEntries::sequential(
             ShaderStages::COMPUTE,
             (
@@ -61,17 +59,17 @@ impl MipPipelineKey {
 
 #[derive(Resource)]
 pub struct MipPipelines {
-    pub(crate) mip_layouts: HashMap<AttachmentFormat, BindGroupLayout>,
+    pub(crate) mip_layouts: HashMap<AttachmentFormat, BindGroupLayoutDescriptor>,
     mip_shader: Handle<Shader>,
 }
 
 impl FromWorld for MipPipelines {
     fn from_world(world: &mut World) -> Self {
-        let device = world.resource::<RenderDevice>();
+        let _device = world.resource::<RenderDevice>();
         let asset_server = world.resource::<AssetServer>();
 
         let mip_layouts = AttachmentFormat::iter()
-            .map(|format| (format, create_mip_layout(device, format)))
+            .map(|format| (format, create_mip_layout_descriptor(format)))
             .collect();
         let mip_shader = asset_server.load(MIP_SHADER);
 
@@ -92,7 +90,7 @@ impl SpecializedComputePipeline for MipPipelines {
             push_constant_ranges: default(),
             shader: self.mip_shader.clone(),
             shader_defs: key.shader_defs(),
-            entry_point: "main".into(),
+            entry_point: Some("main".into()),
             zero_initialize_workgroup_memory: false,
         }
     }

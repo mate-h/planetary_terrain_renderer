@@ -7,9 +7,10 @@ use crate::{
 };
 
 use bevy::{
+    light::GlobalAmbientLight,
     prelude::*,
     render::{Extract, RenderApp, render_resource::*},
-    window::PrimaryWindow,
+    window::{CursorOptions, PrimaryWindow},
 };
 
 mod approximation_debug;
@@ -306,15 +307,17 @@ pub(crate) fn debug_lighting(mut commands: Commands) {
         },
         Transform::from_xyz(-1.0, 1.0, -3.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
-    commands.insert_resource(AmbientLight {
+    commands.insert_resource(GlobalAmbientLight {
         brightness: 100.0,
         ..default()
     });
 }
 
-pub fn debug_window(mut window: Query<&mut Window, With<PrimaryWindow>>) {
-    let mut window = window.single_mut().unwrap();
-    window.cursor_options.visible = true; // false;
+pub fn debug_window(mut cursor: Query<&mut CursorOptions, With<PrimaryWindow>>) {
+    let Ok(mut cursor) = cursor.single_mut() else {
+        return;
+    };
+    cursor.visible = true; // false;
 }
 
 #[derive(Resource, Default)]
