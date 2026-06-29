@@ -334,8 +334,7 @@ pub fn orbital_camera_controller(
         let rotation =
             DQuat::from_axis_angle(camera_terrain.cross(camera_anchor).normalize(), beta);
 
-        let camera_position =
-            terrain_origin + rotation.mul_vec3(c * anchor_terrain.normalize());
+        let camera_position = terrain_origin + rotation.mul_vec3(c * anchor_terrain.normalize());
 
         let initial_direction = camera_terrain.normalize();
         let new_direction = (terrain_origin - camera_position).normalize();

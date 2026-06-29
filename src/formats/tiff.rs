@@ -1,5 +1,5 @@
 use bevy::{
-    asset::{io::Reader, AssetLoader, LoadContext, RenderAssetUsages},
+    asset::{AssetLoader, LoadContext, RenderAssetUsages, io::Reader},
     image::ImageLoaderError,
     prelude::*,
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
@@ -48,7 +48,7 @@ impl AssetLoader for TiffLoader {
                 depth_or_array_layers: 1,
             },
             TextureDimension::D2,
-            TextureFormat::bevy_default(),
+            TextureFormat::Rgba8UnormSrgb,
             RenderAssetUsages::MAIN_WORLD,
         );
 

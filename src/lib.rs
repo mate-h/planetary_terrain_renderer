@@ -46,6 +46,7 @@
 pub mod debug;
 pub mod formats;
 pub mod math;
+mod metal_capture_env;
 pub mod picking;
 pub mod plugin;
 pub mod preprocess;
@@ -56,6 +57,8 @@ pub mod terrain;
 pub mod terrain_data;
 pub mod terrain_view;
 pub mod util;
+
+pub use metal_capture_env::prepare_metal_capture;
 
 #[doc(hidden)]
 pub mod prelude {
@@ -69,6 +72,7 @@ pub mod prelude {
         math::{TerrainShape, TileCoordinate},
         picking::{PickingData, TerrainPickingPlugin},
         plugin::{TerrainPlugin, TerrainSettings},
+        prepare_metal_capture,
         // preprocess::{PreprocessDataset, Preprocessor, SphericalDataset, TerrainPreprocessPlugin},
         render::TerrainMaterialPlugin,
         spawn::SpawnTerrainCommandsExt,

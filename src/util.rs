@@ -2,6 +2,7 @@ use bevy::render::{
     render_resource::{encase::internal::WriteInto, *},
     renderer::{RenderDevice, RenderQueue},
 };
+use core::num::NonZeroU64;
 use std::ops::Deref;
 
 #[derive(Copy, Clone)]
@@ -147,10 +148,28 @@ impl<T: ShaderType + WriteInto> GpuBuffer<T> {
 
     pub fn update(&mut self, queue: &RenderQueue) {
         if let Some(value) = &self.value {
-            let mut buffer = queue
-                .write_buffer_with(&self.buffer, 0, value.size())
-                .unwrap();
-            self.buffer_type.write(value, &mut buffer);
+            let size = value.size().get() as u64;
+            let mut scratch = Vec::with_capacity(size as usize);
+            match self.buffer_type {
+                BufferType::Uniform => {
+                    encase::UniformBuffer::new(&mut scratch)
+                        .write(value)
+                        .unwrap();
+                }
+                BufferType::Storage => {
+                    encase::StorageBuffer::new(&mut scratch)
+                        .write(value)
+                        .unwrap();
+                }
+                BufferType::None => {
+                    unimplemented!("Can not write ShaderType to BufferType::None.");
+                }
+            }
+            if let Some(size) = NonZeroU64::new(size)
+                && let Some(mut buffer_view) = queue.write_buffer_with(&self.buffer, 0, size)
+            {
+                buffer_view.copy_from_slice(&scratch);
+            }
         }
     }
 }

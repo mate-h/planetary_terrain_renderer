@@ -20,9 +20,9 @@ mod orbital_camera;
 pub(crate) use self::{approximation_debug::*, camera::*, orbital_camera::*};
 pub use self::{camera::DebugCameraController, orbital_camera::OrbitalCameraController};
 
-#[cfg(feature = "metal_capture")]
+#[cfg(all(feature = "metal_capture", target_vendor = "apple"))]
 mod metal_capture;
-#[cfg(feature = "metal_capture")]
+#[cfg(all(feature = "metal_capture", target_vendor = "apple"))]
 pub use self::metal_capture::MetalCapturePlugin;
 
 #[derive(Asset, AsBindGroup, TypePath, Clone, Default)]
@@ -53,7 +53,7 @@ impl Plugin for TerrainDebugPlugin {
                 Last,
                 debug_surface_approximation.after(TileTree::generate_surface_approximation),
             );
-        #[cfg(feature = "metal_capture")]
+        #[cfg(all(feature = "metal_capture", target_vendor = "apple"))]
         app.add_plugins(MetalCapturePlugin);
 
         app.sub_app_mut(RenderApp)
@@ -342,7 +342,7 @@ fn finish_loading_images(
 ) {
     loading_images.0.retain(|&(id, dimension, format)| {
         if asset_server.load_state(id).is_loaded() {
-            let image = images.get_mut(id).unwrap();
+            let mut image = images.get_mut(id).unwrap();
             image.texture_descriptor.dimension = dimension;
             image.texture_descriptor.format = format;
 

@@ -105,6 +105,9 @@ When enabling the `metal_capture` feature, you can trigger a GPU frame capture u
 Recorded captures are stored in the `captures` directory of the project.
 They can be examined and analyzed using Xcode.
 
+On macOS, the crate sets `METAL_CAPTURE_ENABLED=1` before Bevy initializes the Metal device.
+If capture still fails in a custom binary, call `bevy_terrain::prepare_metal_capture()` at the start of `main` before `App::new()`.
+
 ## Attribution
 
 The examples use the following [demo datasets](https://drive.proton.me/urls/ZRDAC9SWTM#IxwKkKWSBgnV):

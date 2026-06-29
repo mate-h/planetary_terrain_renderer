@@ -1,23 +1,23 @@
 use crate::shaders::DEPTH_COPY_SHADER;
 use bevy::{
-    core_pipeline::{core_3d::CORE_3D_DEPTH_FORMAT, FullscreenShader},
-    ecs::query::QueryItem,
+    core_pipeline::{FullscreenShader, core_3d::CORE_3D_DEPTH_FORMAT},
+    ecs::entity::EntityHash,
     prelude::*,
     render::{
         Extract,
         camera::ExtractedCamera,
-        render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
         render_phase::{
             CachedRenderPipelinePhaseItem, DrawFunctionId, PhaseItem, PhaseItemExtraIndex,
-            SortedPhaseItem, TrackedRenderPass, ViewSortedRenderPhases,
+            SortedPhaseItem, ViewSortedRenderPhases,
         },
         render_resource::{binding_types::texture_depth_2d_multisampled, *},
-        renderer::{RenderContext, RenderDevice},
+        renderer::{RenderContext, RenderDevice, ViewQuery},
         sync_world::MainEntity,
         texture::{CachedTexture, TextureCache},
         view::{ExtractedView, RetainedViewEntity, ViewDepthTexture, ViewTarget},
     },
 };
+use indexmap::IndexMap;
 use std::ops::Range;
 
 pub(crate) const TERRAIN_DEPTH_FORMAT: TextureFormat = TextureFormat::Depth32FloatStencil8;
@@ -72,6 +72,12 @@ impl SortedPhaseItem for TerrainItem {
 
     fn sort_key(&self) -> Self::SortKey {
         u32::MAX - self.order
+    }
+
+    fn recalculate_sort_keys(
+        _items: &mut IndexMap<(Entity, MainEntity), Self, EntityHash>,
+        _view: &ExtractedView,
+    ) {
     }
 
     fn indexed(&self) -> bool {
@@ -206,7 +212,7 @@ impl FromWorld for DepthCopyPipeline {
         let id = pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
             label: None,
             layout: vec![layout.clone()],
-            push_constant_ranges: Vec::new(),
+            immediate_size: 0,
             vertex: fullscreen.to_vertex_state(),
             fragment: Some(FragmentState {
                 shader: world.load_asset(DEPTH_COPY_SHADER),
@@ -217,8 +223,8 @@ impl FromWorld for DepthCopyPipeline {
             primitive: Default::default(),
             depth_stencil: Some(DepthStencilState {
                 format: CORE_3D_DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: CompareFunction::Always,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(CompareFunction::Always),
                 stencil: Default::default(),
                 bias: Default::default(),
             }),
@@ -233,94 +239,75 @@ impl FromWorld for DepthCopyPipeline {
     }
 }
 
-#[derive(Debug, Hash, Default, PartialEq, Eq, Clone, RenderLabel)]
-pub struct TerrainPass;
+pub fn terrain_pass(
+    world: &World,
+    view: ViewQuery<(
+        &ExtractedCamera,
+        &ExtractedView,
+        &ViewTarget,
+        &ViewDepthTexture,
+        &TerrainViewDepthTexture,
+    )>,
+    mut ctx: RenderContext,
+    terrain_phases: Res<ViewSortedRenderPhases<TerrainItem>>,
+    pipeline_cache: Res<PipelineCache>,
+    depth_copy_pipeline: Res<DepthCopyPipeline>,
+    render_device: Res<RenderDevice>,
+) {
+    let view_entity = view.entity();
+    let (camera, extracted_view, target, depth, terrain_depth) = view.into_inner();
 
-impl ViewNode for TerrainPass {
-    type ViewQuery = (
-        &'static ExtractedCamera,
-        &'static ExtractedView,
-        &'static ViewTarget,
-        &'static ViewDepthTexture,
-        &'static TerrainViewDepthTexture,
+    let Some(pipeline) = pipeline_cache.get_render_pipeline(depth_copy_pipeline.id) else {
+        return;
+    };
+
+    let Some(terrain_phase) = terrain_phases.get(&extracted_view.retained_view_entity) else {
+        return;
+    };
+
+    if terrain_phase.items.is_empty() {
+        return;
+    }
+
+    // Todo: prepare this in a separate system
+    let terrain_depth_view = terrain_depth.texture.create_view(&TextureViewDescriptor {
+        aspect: TextureAspect::DepthOnly,
+        ..default()
+    });
+    let depth_layout = pipeline_cache.get_bind_group_layout(&depth_copy_pipeline.layout);
+    let depth_copy_bind_group = render_device.create_bind_group(
+        None,
+        &depth_layout,
+        &BindGroupEntries::single(&terrain_depth_view),
     );
 
-    fn run<'w>(
-        &self,
-        graph: &mut RenderGraphContext,
-        context: &mut RenderContext<'w>,
-        (camera, extracted_view, target, depth, terrain_depth): QueryItem<'w, '_, Self::ViewQuery>,
-        world: &'w World,
-    ) -> Result<(), NodeRunError> {
-        let device = world.resource::<RenderDevice>();
-        let pipeline_cache = world.resource::<PipelineCache>();
-        let depth_copy_pipeline = world.resource::<DepthCopyPipeline>();
+    // call this here, otherwise the order between passes is incorrect
+    let color_attachments = [Some(target.get_color_attachment())];
+    let terrain_depth_stencil_attachment = Some(terrain_depth.get_attachment());
+    let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
 
-        let Some(pipeline) = pipeline_cache.get_render_pipeline(depth_copy_pipeline.id) else {
-            return Ok(());
-        };
-
-        let Some(terrain_phase) = world
-            .get_resource::<ViewSortedRenderPhases<TerrainItem>>()
-            .and_then(|phase| phase.get(&extracted_view.retained_view_entity))
-        else {
-            return Ok(());
-        };
-
-        if terrain_phase.items.is_empty() {
-            return Ok(());
-        }
-
-        // Todo: prepare this in a separate system
-        let terrain_depth_view = terrain_depth.texture.create_view(&TextureViewDescriptor {
-            aspect: TextureAspect::DepthOnly,
+    {
+        let mut pass = ctx.begin_tracked_render_pass(RenderPassDescriptor {
+            label: Some("terrain_pass"),
+            color_attachments: &color_attachments,
+            depth_stencil_attachment: terrain_depth_stencil_attachment,
             ..default()
         });
-        let depth_layout = pipeline_cache.get_bind_group_layout(&depth_copy_pipeline.layout);
-        let depth_copy_bind_group = device.create_bind_group(
-            None,
-            &depth_layout,
-            &BindGroupEntries::single(&terrain_depth_view),
-        );
 
-        // call this here, otherwise the order between passes is incorrect
-        let color_attachments = [Some(target.get_color_attachment())];
-        let terrain_depth_stencil_attachment = Some(terrain_depth.get_attachment());
-        let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
+        if let Some(viewport) = camera.viewport.as_ref() {
+            pass.set_camera_viewport(viewport);
+        }
 
-        let view_entity = graph.view_entity();
-        context.add_command_buffer_generation_task(move |device| {
-            let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor::default());
-
-            let pass = encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("terrain_pass"),
-                color_attachments: &color_attachments,
-                depth_stencil_attachment: terrain_depth_stencil_attachment,
-                ..default()
-            });
-            let mut pass = TrackedRenderPass::new(&device, pass);
-
-            if let Some(viewport) = camera.viewport.as_ref() {
-                pass.set_camera_viewport(viewport);
-            }
-
-            terrain_phase
-                .render(&mut pass, world, view_entity)
-                .unwrap();
-            drop(pass);
-
-            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor {
-                depth_stencil_attachment,
-                ..default()
-            });
-            pass.set_bind_group(0, &depth_copy_bind_group, &[]);
-            pass.set_pipeline(pipeline);
-            pass.draw(0..3, 0..1);
-            drop(pass);
-
-            encoder.finish()
-        });
-
-        Ok(())
+        terrain_phase.render(&mut pass, world, view_entity).unwrap();
     }
+
+    let mut pass = ctx
+        .command_encoder()
+        .begin_render_pass(&RenderPassDescriptor {
+            depth_stencil_attachment,
+            ..default()
+        });
+    pass.set_bind_group(0, &depth_copy_bind_group, &[]);
+    pass.set_pipeline(pipeline);
+    pass.draw(0..3, 0..1);
 }

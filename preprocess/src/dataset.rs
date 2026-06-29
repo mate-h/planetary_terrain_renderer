@@ -162,13 +162,12 @@ impl PreprocessContext {
                         msg: format!("Invalid path: {:?}", path),
                     })
                 })?;
-                Dataset::open(path_str)
-                    .map_err(|e| {
-                        PreprocessError::Gdal(gdal::errors::GdalError::NullPointer {
-                            method_name: "GDALOpenEx",
-                            msg: format!("Failed to open dataset at '{}'. Error: {}", path_str, e),
-                        })
+                Dataset::open(path_str).map_err(|e| {
+                    PreprocessError::Gdal(gdal::errors::GdalError::NullPointer {
+                        method_name: "GDALOpenEx",
+                        msg: format!("Failed to open dataset at '{}'. Error: {}", path_str, e),
                     })
+                })
             })
             .collect::<PreprocessResult<Vec<_>>>()?;
 
