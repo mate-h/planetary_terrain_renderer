@@ -219,6 +219,7 @@ impl FromWorld for DepthCopyPipeline {
                 shader_defs: vec![],
                 entry_point: Some("fragment".into()),
                 targets: vec![],
+                constants: vec![],
             }),
             primitive: Default::default(),
             depth_stencil: Some(DepthStencilState {

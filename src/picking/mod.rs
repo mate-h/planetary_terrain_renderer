@@ -166,6 +166,7 @@ impl FromWorld for PickingPipeline {
             shader_defs: vec![],
             entry_point: Some("pick".into()),
             zero_initialize_workgroup_memory: false,
+            constants: vec![],
         });
 
         Self { id, layout }

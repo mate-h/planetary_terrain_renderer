@@ -184,7 +184,9 @@ impl TileAtlas {
         mut buffers: ResMut<Assets<ShaderBuffer>>,
     ) {
         for (tile_atlas, global_transform) in &mut tile_atlases {
-            let mut terrain_buffer = buffers.get_mut(&tile_atlas.terrain_buffer).unwrap();
+            let Some(mut terrain_buffer) = buffers.get_mut(&tile_atlas.terrain_buffer) else {
+                continue;
+            };
             terrain_buffer.set_data(TerrainUniform::new(&tile_atlas, global_transform));
         }
     }

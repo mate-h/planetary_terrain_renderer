@@ -91,6 +91,7 @@ impl SpecializedComputePipeline for MipPipelines {
             shader_defs: key.shader_defs(),
             entry_point: Some("main".into()),
             zero_initialize_workgroup_memory: false,
+            constants: vec![],
         }
     }
 }

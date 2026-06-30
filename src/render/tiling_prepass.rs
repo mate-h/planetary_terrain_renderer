@@ -3,7 +3,10 @@ use crate::{
     render::{
         GpuTerrain, GpuTerrainView,
         terrain_bind_group::TerrainBindGroup,
-        terrain_view_bind_group::{IndirectBindGroup, PrepassViewBindGroup, TerrainViewBindGroup},
+        terrain_view_bind_group::{
+            IndirectBindGroup, PrepassViewBindGroup, TerrainViewBindGroup,
+            TerrainViewBindGroupDebug,
+        },
     },
     shaders::{PREPARE_PREPASS_SHADER, REFINE_TILES_SHADER},
     terrain::TerrainComponents,
@@ -125,6 +128,7 @@ impl TilingPrepassItem {
 pub struct TerrainTilingPrepassPipelines {
     pub(crate) terrain_layout: BindGroupLayoutDescriptor,
     pub(crate) terrain_view_layout: BindGroupLayoutDescriptor,
+    pub(crate) terrain_view_layout_debug: BindGroupLayoutDescriptor,
     pub(crate) indirect_layout: BindGroupLayoutDescriptor,
     pub(crate) prepass_view_layout: BindGroupLayoutDescriptor,
     prepare_prepass_shader: Handle<Shader>,
@@ -137,6 +141,8 @@ impl FromWorld for TerrainTilingPrepassPipelines {
 
         let terrain_layout = TerrainBindGroup::bind_group_layout_descriptor(device);
         let terrain_view_layout = TerrainViewBindGroup::bind_group_layout_descriptor(device);
+        let terrain_view_layout_debug =
+            TerrainViewBindGroupDebug::bind_group_layout_descriptor(device);
         let indirect_layout = IndirectBindGroup::bind_group_layout_descriptor(device);
         let prepass_view_layout = PrepassViewBindGroup::bind_group_layout_descriptor(device);
 
@@ -145,6 +151,7 @@ impl FromWorld for TerrainTilingPrepassPipelines {
 
         TerrainTilingPrepassPipelines {
             terrain_view_layout,
+            terrain_view_layout_debug,
             indirect_layout,
             prepass_view_layout,
             terrain_layout,
@@ -208,6 +215,7 @@ impl SpecializedComputePipeline for TerrainTilingPrepassPipelines {
             shader_defs,
             entry_point,
             zero_initialize_workgroup_memory: false,
+            constants: vec![],
         }
     }
 }

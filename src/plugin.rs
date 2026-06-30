@@ -1,5 +1,5 @@
 use crate::{
-    formats::TiffLoader,
+    formats::{TerrainConfigLoader, TiffLoader},
     preprocess::{MipPipelines, mip_prepass},
     render::{
         DepthCopyPipeline, GpuTerrain, GpuTerrainView, TerrainItem, TerrainTilingPrepassPipelines,
@@ -27,7 +27,6 @@ use bevy::{
         renderer::RenderGraph,
     },
 };
-use bevy_common_assets::ron::RonAssetPlugin;
 use big_space::prelude::*;
 
 #[derive(Resource)]
@@ -68,11 +67,11 @@ impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(BigSpaceDefaultPlugins);
 
-        app.add_plugins(RonAssetPlugin::<TerrainConfig>::new(&["tc.ron"]))
-            .init_asset::<TerrainConfig>()
+        app.init_asset::<TerrainConfig>()
             .init_resource::<InternalShaders>()
             .init_resource::<TerrainViewComponents<TileTree>>()
             .init_resource::<TerrainSettings>()
+            .init_asset_loader::<TerrainConfigLoader>()
             .init_asset_loader::<TiffLoader>()
             .add_systems(
                 PostUpdate,

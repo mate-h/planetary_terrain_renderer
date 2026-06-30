@@ -4,7 +4,12 @@ use crate::{
     terrain_data::{TileAtlas, TileTree},
     terrain_view::{TerrainViewComponents, TerrainViewConfig},
 };
-use bevy::{ecs::system::SystemState, prelude::*, render::storage::ShaderBuffer};
+use bevy::{
+    camera::visibility::{NoCpuCulling, NoFrustumCulling},
+    ecs::system::SystemState,
+    prelude::*,
+    render::storage::ShaderBuffer,
+};
 use big_space::floating_origins::BigSpace;
 
 #[derive(Clone)]
@@ -67,6 +72,9 @@ pub(crate) fn spawn_terrains<M: Material>(
                         config.shape.transform(),
                         TileAtlas::new(&config, &mut buffers, &settings),
                         MeshMaterial3d(materials.add(material)),
+                        Visibility::Visible,
+                        NoCpuCulling,
+                        NoFrustumCulling,
                     ))
                     .id();
 

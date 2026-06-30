@@ -76,6 +76,8 @@ fn initialize(
             .spawn_spatial((
                 Transform::from_translation(-Vec3::X * RADIUS as f32 * 3.0)
                     .looking_to(Vec3::X, Vec3::Y),
+                Camera3d::default(),
+                Msaa::Sample4,
                 DebugCameraController::new(RADIUS),
                 OrbitalCameraController::default(),
             ))

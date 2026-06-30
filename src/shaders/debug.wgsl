@@ -1,8 +1,13 @@
 #define_import_path bevy_terrain::debug
 
 #import bevy_terrain::types::{Coordinate, WorldCoordinate, TileCoordinate, AtlasTile, Blend}
+#ifdef ATMOSPHERE
+#import bevy_terrain::bindings::{terrain, terrain_view, approximate_height, geometry_tiles, attachments, origins}
+#import bevy_terrain::functions::{compute_subdivision_coordinate}
+#else
 #import bevy_terrain::bindings::{terrain, tile_tree, terrain_view, approximate_height, geometry_tiles, attachments, origins}
-#import bevy_terrain::functions::{lookup_best, compute_world_coordinate, tree_lod, compute_subdivision_coordinate}
+#import bevy_terrain::functions::{lookup_best, compute_subdivision_coordinate}
+#endif
 #import bevy_pbr::mesh_view_bindings::view
 
 fn index_color(index: u32) -> vec4<f32> {
@@ -102,12 +107,18 @@ fn show_geometry_lod(coordinate: Coordinate, tile_index: u32) -> vec4<f32> {
 }
 
 fn show_tile_tree(coordinate: Coordinate, world_coordinate: WorldCoordinate) -> vec4<f32> {
-    let target_lod     = log2(terrain_view.load_distance / world_coordinate.view_distance);
+    let target_lod = log2(terrain_view.load_distance / world_coordinate.view_distance);
 
+#ifdef ATMOSPHERE
+    // Full tile-tree lookup needs `tile_tree` in the fragment stage, which exceeds the
+    // storage-buffer limit alongside atmosphere view bindings. Use geometry LOD coloring instead.
+    var color = checker_color(coordinate, 0.0);
+#else
     let best_lookup = lookup_best(coordinate);
 
     var color = checker_color(best_lookup.tile.coordinate, 0.0);
     color     = mix(color, vec4<f32>(0.1), tile_tree_outlines(best_lookup.tile_tree_uv));
+#endif
 
     if (fract(target_lod) < 0.01 && target_lod >= 1.0) {
         color = mix(index_color(u32(target_lod)), vec4<f32>(0.0), 0.8);

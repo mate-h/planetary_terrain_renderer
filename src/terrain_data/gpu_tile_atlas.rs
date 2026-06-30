@@ -218,7 +218,10 @@ impl GpuTileAtlas {
 
                             rx.recv().await.unwrap();
 
-                            let mut data = buffer_slice.get_mapped_range().to_vec();
+                            let mut data = buffer_slice
+                                .get_mapped_range()
+                                .expect("tile download buffer should be mapped")
+                                .to_vec();
 
                             download_buffer.unmap();
                             drop(download_buffer);
