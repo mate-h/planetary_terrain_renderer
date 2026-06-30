@@ -24,7 +24,7 @@ bluenoise_texture = ["bevy/bluenoise_texture"]
 
 [dependencies]
 bevy = { path = "../bevy", default-features = false, features = ["3d"] }
-big_space = { path = "third_party/big_space", features = ["i32"] }
+big_space = { path = "../big_space", features = ["i32"] }
 tiff = "0.10"
 bytemuck = "1.14"
 ndarray = "0.16.1"
