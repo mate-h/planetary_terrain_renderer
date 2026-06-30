@@ -215,9 +215,14 @@ impl GpuTerrain {
         let layout = pipeline_cache
             .get_bind_group_layout(&TerrainBindGroup::bind_group_layout_descriptor(&device));
         for gpu_terrain in &mut gpu_terrains.values_mut() {
-            let terrain_buffer = buffers.get(&gpu_terrain.terrain_buffer).unwrap();
+            if gpu_terrain.terrain_bind_group.is_some() {
+                continue;
+            }
 
-            // Todo: be smarter about bind group recreation
+            let Some(terrain_buffer) = buffers.get(&gpu_terrain.terrain_buffer) else {
+                continue;
+            };
+
             gpu_terrain.terrain_bind_group = Some(device.create_bind_group(
                 "terrain_bind_group",
                 &layout,

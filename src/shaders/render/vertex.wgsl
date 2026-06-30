@@ -1,6 +1,6 @@
 #define_import_path bevy_terrain::vertex
 
-#import bevy_terrain::types::{Blend, Coordinate, WorldCoordinate}
+#import bevy_terrain::types::{Blend, Coordinate, WorldCoordinate, AtlasTile}
 #import bevy_terrain::bindings::terrain_view
 #import bevy_terrain::functions::{compute_coordinate, compute_world_coordinate, compute_blend, lookup_tile, apply_height}
 #import bevy_terrain::attachments::sample_height
@@ -14,9 +14,15 @@ struct VertexInput {
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) tile_uv: vec2<f32>,
-    @location(1) tile_index: u32,
+    @location(1) @interpolate(flat) tile_index: u32,
     @location(2) view_distance: f32,
     @location(3) height: f32,
+    @location(4) @interpolate(flat) atlas_index: u32,
+    @location(5) atlas_blend_ratio: f32,
+    @location(6) @interpolate(flat) atlas_face: u32,
+    @location(7) @interpolate(flat) atlas_lod: u32,
+    @location(8) @interpolate(flat) atlas_xy: vec2<f32>,
+    @location(9) atlas_uv: vec2<f32>,
 }
 
 struct VertexInfo {
@@ -35,13 +41,19 @@ fn vertex_info(input: VertexInput) -> VertexInfo {
     return info;
 }
 
-fn vertex_output(info: ptr<function, VertexInfo>, height: f32) -> VertexOutput {
+fn vertex_output(info: ptr<function, VertexInfo>, tile: AtlasTile, height: f32) -> VertexOutput {
     var output: VertexOutput;
     output.clip_position = position_world_to_clip(apply_height((*info).world_coordinate, height));
     output.tile_uv       = (*info).coordinate.uv;
     output.tile_index    = (*info).tile_index;
     output.view_distance = (*info).world_coordinate.view_distance;
     output.height        = height;
+    output.atlas_index   = tile.index;
+    output.atlas_blend_ratio = tile.blend_ratio;
+    output.atlas_face    = tile.coordinate.face;
+    output.atlas_lod     = tile.coordinate.lod;
+    output.atlas_xy      = vec2<f32>(tile.coordinate.xy);
+    output.atlas_uv      = tile.coordinate.uv;
     return output;
 }
 
@@ -52,5 +64,5 @@ fn vertex(input: VertexInput) -> VertexOutput {
     let tile   = lookup_tile(info.coordinate, info.blend);
     var height = sample_height(tile);
 
-    return vertex_output(&info, height);
+    return vertex_output(&info, tile, height);
 }

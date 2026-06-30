@@ -82,5 +82,9 @@ pub mod prelude {
         },
         terrain_view::{TerrainViewComponents, TerrainViewConfig},
     };
-    pub use big_space::{commands::BigSpaceCommands, grid::Grid};
+    pub use big_space::{
+        commands::BigSpaceCommands,
+        grid::Grid,
+        prelude::{CellCoord, FloatingOrigin},
+    };
 }

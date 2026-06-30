@@ -19,12 +19,12 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("webgpu"))
 
 [features]
 rand = ["dep:rand"]
-metal_capture = ["dep:wgpu-core", "dep:objc2-metal", "dep:objc2-foundation"]
+metal_capture = []
+bluenoise_texture = ["bevy/bluenoise_texture"]
 
 [dependencies]
-bevy = "0.19"
-bevy_common_assets = { version = "0.17", features = ["ron"] }
-big_space = { git = "https://github.com/m-edlund/big_space", rev = "79e04cc01a84f3b8d199a0f97aaeb8245f203b16", features = ["i32"] }
+bevy = { path = "../bevy", default-features = false, features = ["3d"] }
+big_space = { path = "../big_space", features = ["i32"] }
 tiff = "0.10"
 bytemuck = "1.14"
 ndarray = "0.16.1"
@@ -39,9 +39,7 @@ strum = "0.27.1"
 strum_macros = "0.27.1"
 
 rand = { version = "0.9.0", optional = true }
-wgpu-core = { version = "29.0.3", optional = true, default-features = false, features = ["metal", "std"] } # keep in sync with bevy's wgpu
-objc2-metal = { version = "0.3.2", optional = true, default-features = false, features = ["MTLCaptureManager", "MTLDevice", "std"] }
-objc2-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["NSString", "NSURL", "std"] }
+# wgpu-core optional dep removed for Bevy 0.20 workspace compatibility; re-add with patched git when metal_capture is needed
 
 [[example]]
 name = "spherical"
@@ -51,3 +49,9 @@ path = "examples/spherical.rs"
 name = "precision_demo"
 path = "examples/precision_demo.rs"
 required-features = ["rand"]
+
+[patch.crates-io]
+wgpu = { git = "https://github.com/stuartparmenter/wgpu", rev = "af64796742a9046d4c0b1bdd06e2439c3435e93e" }
+wgpu-types = { git = "https://github.com/stuartparmenter/wgpu", rev = "af64796742a9046d4c0b1bdd06e2439c3435e93e" }
+wgpu-naga-bridge = { git = "https://github.com/stuartparmenter/wgpu", rev = "af64796742a9046d4c0b1bdd06e2439c3435e93e" }
+naga = { git = "https://github.com/stuartparmenter/wgpu", rev = "af64796742a9046d4c0b1bdd06e2439c3435e93e" }

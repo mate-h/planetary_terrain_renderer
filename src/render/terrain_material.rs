@@ -7,18 +7,19 @@ use crate::{
     shaders::{DEFAULT_FRAGMENT_SHADER, DEFAULT_VERTEX_SHADER},
     spawn::{TerrainsToSpawn, spawn_terrains},
     terrain::TerrainComponents,
-    terrain_data::GpuTileAtlas,
+    terrain_data::{GpuTileAtlas, TileAtlas},
     terrain_view::TerrainViewComponents,
 };
 use bevy::shader::{ShaderDefVal, ShaderRef};
 use bevy::{
     pbr::{
-        MATERIAL_BIND_GROUP_INDEX, MeshPipeline, MeshPipelineSystems, MeshPipelineViewLayoutKey,
-        SetMaterialBindGroup, SetMeshViewBindGroup,
+        ExtractedAtmosphere, MATERIAL_BIND_GROUP_INDEX, MaterialExtractionSystems, MeshPipeline,
+        MeshPipelineSystems, MeshPipelineViewLayoutKey, RenderMaterialInstance,
+        RenderMaterialInstances, SetMaterialBindGroup, SetMeshViewBindGroup,
     },
     prelude::*,
     render::{
-        Render, RenderApp, RenderStartup, RenderSystems,
+        Extract, ExtractSchedule, Render, RenderApp, RenderStartup, RenderSystems,
         render_phase::{
             AddRenderCommand, DrawFunctions, PhaseItemExtraIndex, SetItemPipeline,
             ViewSortedRenderPhases,
@@ -26,7 +27,7 @@ use bevy::{
         render_resource::*,
         renderer::RenderDevice,
         sync_world::MainEntity,
-        view::RetainedViewEntity,
+        view::{ExtractedView, RetainedViewEntity},
     },
 };
 use std::{hash::Hash, marker::PhantomData};
@@ -34,6 +35,7 @@ use std::{hash::Hash, marker::PhantomData};
 #[derive(PartialEq, Eq, Clone, Hash)]
 pub struct TerrainPipelineKey {
     pub flags: TerrainPipelineFlags,
+    pub color_target_format: TextureFormat,
 }
 
 bitflags::bitflags! {
@@ -58,6 +60,8 @@ bitflags::bitflags! {
         const TEST1              = 1 << 14;
         const TEST2              = 1 << 15;
         const TEST3              = 1 << 16;
+        const HDR                = 1 << 17;
+        const ATMOSPHERE         = 1 << 18;
         const MSAA_RESERVED_BITS = TerrainPipelineFlags::MSAA_MASK_BITS << TerrainPipelineFlags::MSAA_SHIFT_BITS;
     }
 }
@@ -189,8 +193,53 @@ impl TerrainPipelineFlags {
         if self.contains(TerrainPipelineFlags::TEST3) {
             shader_defs.push("TEST3".into());
         }
+        if self.contains(TerrainPipelineFlags::HDR) {
+            shader_defs.push("HDR".into());
+        }
+        if self.contains(TerrainPipelineFlags::ATMOSPHERE) {
+            shader_defs.push("ATMOSPHERE".into());
+        }
 
         shader_defs
+    }
+}
+
+fn terrain_mesh_view_layout_key(
+    multisampled: bool,
+    atmosphere: bool,
+    hdr: bool,
+) -> MeshPipelineViewLayoutKey {
+    let mut key = MeshPipelineViewLayoutKey::empty();
+    if multisampled {
+        key |= MeshPipelineViewLayoutKey::MULTISAMPLED;
+    }
+    if atmosphere {
+        key |= MeshPipelineViewLayoutKey::ATMOSPHERE;
+    }
+    #[cfg(feature = "bluenoise_texture")]
+    {
+        key |= MeshPipelineViewLayoutKey::STBN;
+    }
+    if !hdr {
+        key |= MeshPipelineViewLayoutKey::TONEMAP_IN_SHADER;
+    }
+    key
+}
+
+fn extract_terrain_materials<M: Material>(
+    mut material_instances: ResMut<RenderMaterialInstances>,
+    terrains: Extract<Query<(Entity, &MeshMaterial3d<M>), With<TileAtlas>>>,
+) {
+    let last_change_tick = material_instances.current_change_tick;
+
+    for (entity, material) in &terrains {
+        material_instances.instances.insert(
+            entity.into(),
+            RenderMaterialInstance {
+                asset_id: material.id().untyped(),
+                last_change_tick,
+            },
+        );
     }
 }
 
@@ -199,8 +248,13 @@ impl TerrainPipelineFlags {
 pub struct TerrainRenderPipeline<M: Material> {
     view_layout: BindGroupLayoutDescriptor,
     view_layout_multisampled: BindGroupLayoutDescriptor,
+    view_layout_atmosphere: BindGroupLayoutDescriptor,
+    view_layout_multisampled_atmosphere: BindGroupLayoutDescriptor,
+    view_layout_atmosphere_hdr: BindGroupLayoutDescriptor,
+    view_layout_multisampled_atmosphere_hdr: BindGroupLayoutDescriptor,
     terrain_layout: BindGroupLayoutDescriptor,
     terrain_view_layout: BindGroupLayoutDescriptor,
+    terrain_view_layout_debug: BindGroupLayoutDescriptor,
     material_layout: BindGroupLayoutDescriptor,
     vertex_shader: Handle<Shader>,
     fragment_shader: Handle<Shader>,
@@ -227,18 +281,32 @@ impl<M: Material> FromWorld for TerrainRenderPipeline<M> {
 
         Self {
             view_layout: mesh_pipeline
-                .get_view_layout(MeshPipelineViewLayoutKey::TONEMAP_IN_SHADER)
+                .get_view_layout(terrain_mesh_view_layout_key(false, false, false))
                 .main_layout
                 .clone(),
             view_layout_multisampled: mesh_pipeline
-                .get_view_layout(
-                    MeshPipelineViewLayoutKey::MULTISAMPLED
-                        | MeshPipelineViewLayoutKey::TONEMAP_IN_SHADER,
-                )
+                .get_view_layout(terrain_mesh_view_layout_key(true, false, false))
+                .main_layout
+                .clone(),
+            view_layout_atmosphere: mesh_pipeline
+                .get_view_layout(terrain_mesh_view_layout_key(false, true, false))
+                .main_layout
+                .clone(),
+            view_layout_multisampled_atmosphere: mesh_pipeline
+                .get_view_layout(terrain_mesh_view_layout_key(true, true, false))
+                .main_layout
+                .clone(),
+            view_layout_atmosphere_hdr: mesh_pipeline
+                .get_view_layout(terrain_mesh_view_layout_key(false, true, true))
+                .main_layout
+                .clone(),
+            view_layout_multisampled_atmosphere_hdr: mesh_pipeline
+                .get_view_layout(terrain_mesh_view_layout_key(true, true, true))
                 .main_layout
                 .clone(),
             terrain_layout: prepass_pipelines.terrain_layout.clone(),
             terrain_view_layout: prepass_pipelines.terrain_view_layout.clone(),
+            terrain_view_layout_debug: prepass_pipelines.terrain_view_layout_debug.clone(),
             material_layout: M::bind_group_layout_descriptor(device),
             vertex_shader,
             fragment_shader,
@@ -253,16 +321,38 @@ impl<M: Material> SpecializedRenderPipeline for TerrainRenderPipeline<M> {
     fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
         let mut shader_defs = key.flags.shader_defs();
 
-        let mut bind_group_layouts = match key.flags.msaa_samples() {
-            1 => vec![self.view_layout.clone()],
-            _ => {
+        let mut bind_group_layouts = match (
+            key.flags.msaa_samples() > 1,
+            key.flags.contains(TerrainPipelineFlags::ATMOSPHERE),
+            key.flags.contains(TerrainPipelineFlags::HDR),
+        ) {
+            (false, false, _) => vec![self.view_layout.clone()],
+            (true, false, _) => {
                 shader_defs.push("MULTISAMPLED".into());
                 vec![self.view_layout_multisampled.clone()]
+            }
+            (false, true, false) => vec![self.view_layout_atmosphere.clone()],
+            (true, true, false) => {
+                shader_defs.push("MULTISAMPLED".into());
+                vec![self.view_layout_multisampled_atmosphere.clone()]
+            }
+            (false, true, true) => vec![self.view_layout_atmosphere_hdr.clone()],
+            (true, true, true) => {
+                shader_defs.push("MULTISAMPLED".into());
+                vec![self.view_layout_multisampled_atmosphere_hdr.clone()]
             }
         };
 
         bind_group_layouts.push(self.terrain_layout.clone());
-        bind_group_layouts.push(self.terrain_view_layout.clone());
+        bind_group_layouts.push(
+            if key.flags.contains(TerrainPipelineFlags::SHOW_TILE_TREE)
+                && !key.flags.contains(TerrainPipelineFlags::ATMOSPHERE)
+            {
+                self.terrain_view_layout_debug.clone()
+            } else {
+                self.terrain_view_layout.clone()
+            },
+        );
         bind_group_layouts.push(self.material_layout.clone());
 
         let mut vertex_shader_defs = shader_defs.clone();
@@ -279,6 +369,7 @@ impl<M: Material> SpecializedRenderPipeline for TerrainRenderPipeline<M> {
                 entry_point: Some("vertex".into()),
                 shader_defs: vertex_shader_defs,
                 buffers: Vec::new(),
+                constants: vec![],
             },
             primitive: PrimitiveState {
                 front_face: FrontFace::Ccw,
@@ -294,10 +385,11 @@ impl<M: Material> SpecializedRenderPipeline for TerrainRenderPipeline<M> {
                 shader_defs: fragment_shader_defs,
                 entry_point: Some("fragment".into()),
                 targets: vec![Some(ColorTargetState {
-                    format: TextureFormat::Rgba8UnormSrgb,
+                    format: key.color_target_format,
                     blend: Some(BlendState::REPLACE),
                     write_mask: ColorWrites::ALL,
                 })],
+                constants: vec![],
             }),
             depth_stencil: Some(DepthStencilState {
                 format: TERRAIN_DEPTH_FORMAT,
@@ -352,13 +444,13 @@ pub(crate) fn queue_terrain<M: Material>(
     mut terrain_phases: ResMut<ViewSortedRenderPhases<TerrainItem>>,
     gpu_tile_atlases: Res<TerrainComponents<GpuTileAtlas>>,
     gpu_terrain_views: Res<TerrainViewComponents<GpuTerrainView>>,
-    mut views: Query<(MainEntity, &Msaa)>,
+    mut views: Query<(MainEntity, &Msaa, &ExtractedView, Has<ExtractedAtmosphere>)>,
 ) where
     M::Data: PartialEq + Eq + Hash + Clone,
 {
     let draw_function = draw_functions.read().get_id::<DrawTerrain>().unwrap();
 
-    for (view, msaa) in &mut views {
+    for (view, msaa, extracted_view, has_atmosphere) in &mut views {
         let Some(terrain_phase) = terrain_phases.get_mut(&RetainedViewEntity {
             main_entity: view.into(),
             auxiliary_entity: Entity::PLACEHOLDER.into(),
@@ -377,6 +469,15 @@ pub(crate) fn queue_terrain<M: Material>(
                 flags |= TerrainPipelineFlags::SPHERICAL;
             }
 
+            let hdr = extracted_view.target_format != TextureFormat::Rgba8UnormSrgb
+                && extracted_view.target_format != TextureFormat::Rgba8Unorm;
+            if hdr {
+                flags |= TerrainPipelineFlags::HDR;
+            }
+            if has_atmosphere {
+                flags |= TerrainPipelineFlags::ATMOSPHERE;
+            }
+
             if let Some(debug) = &debug {
                 flags |= TerrainPipelineFlags::from_debug(debug);
             } else {
@@ -386,7 +487,10 @@ pub(crate) fn queue_terrain<M: Material>(
                     | TerrainPipelineFlags::SAMPLE_GRAD;
             }
 
-            let key = TerrainPipelineKey { flags };
+            let key = TerrainPipelineKey {
+                flags,
+                color_target_format: extracted_view.target_format,
+            };
 
             let pipeline = pipelines.specialize(&pipeline_cache, &terrain_pipeline, key);
 
@@ -425,6 +529,10 @@ where
         app.sub_app_mut(RenderApp)
             .add_render_command::<TerrainItem, DrawTerrain>()
             .init_resource::<SpecializedRenderPipelines<TerrainRenderPipeline<M>>>()
+            .add_systems(
+                ExtractSchedule,
+                extract_terrain_materials::<M>.in_set(MaterialExtractionSystems),
+            )
             .add_systems(
                 RenderStartup,
                 init_terrain_render_pipeline::<M>.after(MeshPipelineSystems),

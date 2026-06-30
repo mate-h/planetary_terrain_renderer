@@ -1,4 +1,5 @@
 use crate::{
+    debug::DebugTerrain,
     math::{TileCoordinate, ViewCoordinate},
     render::TerrainTilingPrepassPipelines,
     terrain_data::{TileTree, TileTreeEntry},
@@ -9,6 +10,7 @@ use bevy::{
         query::ROQueryItem,
         system::{StaticSystemParam, SystemParamItem, lifetimeless::SRes},
     },
+    pbr::ExtractedAtmosphere,
     prelude::*,
     render::{
         Extract,
@@ -45,6 +47,20 @@ pub struct PrepassViewBindGroup {
 #[derive(AsBindGroup)]
 pub struct TerrainViewBindGroup {
     // Todo: replace with updatable uniform buffer
+    #[storage(0, visibility(vertex, fragment), read_only)]
+    pub(crate) terrain_view: Handle<ShaderBuffer>,
+    #[storage(1, visibility(vertex, fragment), read_only)]
+    pub(crate) approximate_height: Handle<ShaderBuffer>,
+    #[storage(2, visibility(vertex), read_only)]
+    pub(crate) tile_tree: Handle<ShaderBuffer>,
+    #[storage(3, visibility(vertex, fragment), read_only, buffer)]
+    pub(crate) geometry_tiles: Buffer,
+}
+
+/// Same bindings as [`TerrainViewBindGroup`], but exposes `tile_tree` to the fragment stage for
+/// debug visualizations (`SHOW_TILE_TREE`).
+#[derive(AsBindGroup)]
+pub struct TerrainViewBindGroupDebug {
     #[storage(0, visibility(vertex, fragment), read_only)]
     pub(crate) terrain_view: Handle<ShaderBuffer>,
     #[storage(1, visibility(vertex, fragment), read_only)]
@@ -147,6 +163,7 @@ pub struct GpuTerrainView {
     indirect: IndirectBindGroup,
     prepass_view: PrepassViewBindGroup,
     terrain_view: TerrainViewBindGroup,
+    terrain_view_debug: TerrainViewBindGroupDebug,
 }
 
 impl GpuTerrainView {
@@ -193,6 +210,12 @@ impl GpuTerrainView {
             terrain_view: tile_tree.terrain_view_buffer.clone(),
             approximate_height: tile_tree.approximate_height_buffer.clone(),
             tile_tree: tile_tree.tile_tree_buffer.clone(),
+            geometry_tiles: tiles.clone(),
+        };
+        let terrain_view_debug = TerrainViewBindGroupDebug {
+            terrain_view: tile_tree.terrain_view_buffer.clone(),
+            approximate_height: tile_tree.approximate_height_buffer.clone(),
+            tile_tree: tile_tree.tile_tree_buffer.clone(),
             geometry_tiles: tiles,
         };
 
@@ -203,6 +226,7 @@ impl GpuTerrainView {
             indirect: prepare_prepass,
             prepass_view: refine_tiles,
             terrain_view,
+            terrain_view_debug,
             indirect_bind_group: None,
             prepass_view_bind_group: None,
             terrain_view_bind_group: None,
@@ -227,18 +251,40 @@ impl GpuTerrainView {
         device: Res<RenderDevice>,
         pipeline_cache: Res<PipelineCache>,
         prepass_pipeline: Res<TerrainTilingPrepassPipelines>,
+        debug: Option<Res<DebugTerrain>>,
+        atmosphere_cameras: Query<Has<ExtractedAtmosphere>, With<Camera3d>>,
         mut gpu_terrain_views: ResMut<TerrainViewComponents<GpuTerrainView>>,
         mut param: StaticSystemParam<<TerrainViewBindGroup as AsBindGroup>::Param>,
     ) {
+        let show_tile_tree = debug.is_some_and(|debug| debug.show_tile_tree);
+        let atmosphere_active = atmosphere_cameras.iter().any(|has| has);
+        let use_debug_layout = show_tile_tree && !atmosphere_active;
+
         for gpu_terrain_view in &mut gpu_terrain_views.values_mut() {
-            // Todo: be smarter about bind group recreation
-            let bind_group = gpu_terrain_view.terrain_view.as_bind_group(
-                &prepass_pipeline.terrain_view_layout,
-                &device,
-                &pipeline_cache,
-                &mut param,
-            );
-            gpu_terrain_view.terrain_view_bind_group = bind_group.ok().map(|b| b.bind_group);
+            let bind_group = if use_debug_layout {
+                gpu_terrain_view
+                    .terrain_view_debug
+                    .as_bind_group(
+                        &prepass_pipeline.terrain_view_layout_debug,
+                        &device,
+                        &pipeline_cache,
+                        &mut param,
+                    )
+                    .ok()
+                    .map(|b| b.bind_group)
+            } else {
+                gpu_terrain_view
+                    .terrain_view
+                    .as_bind_group(
+                        &prepass_pipeline.terrain_view_layout,
+                        &device,
+                        &pipeline_cache,
+                        &mut param,
+                    )
+                    .ok()
+                    .map(|b| b.bind_group)
+            };
+            gpu_terrain_view.terrain_view_bind_group = bind_group;
         }
     }
 

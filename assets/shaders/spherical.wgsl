@@ -1,8 +1,8 @@
 #import bevy_terrain::types::{AtlasTile}
 #import bevy_terrain::bindings::{terrain, terrain_view, attachments, height_attachment, albedo_atlas, albedo_attachment, terrain_sampler}
 #import bevy_terrain::attachments::{compute_sample_uv, sample_height, sample_height_mask, compute_slope, sample_surface_gradient, relief_shading}
-#import bevy_terrain::fragment::{FragmentInput, FragmentOutput, fragment_info, fragment_output, fragment_debug}
-#import bevy_terrain::functions::{lookup_tile, inverse_mix, high_precision}
+#import bevy_terrain::fragment::{FragmentInput, FragmentOutput, atlas_tile_from_input, fragment_info, fragment_output, fragment_debug}
+#import bevy_terrain::functions::{inverse_mix, high_precision}
 #import bevy_pbr::pbr_types::{PbrInput, pbr_input_new}
 #import bevy_pbr::pbr_functions::{calculate_view, apply_pbr_lighting}
 
@@ -71,7 +71,7 @@ fn slope_gradient(world_normal: vec3<f32>, surface_gradient: vec3<f32>) -> vec4<
 fn fragment(input: FragmentInput) -> FragmentOutput {
     var info = fragment_info(input);
 
-    let tile             = lookup_tile(info.coordinate, info.blend);
+    let tile             = atlas_tile_from_input(input);
     let mask             = sample_height_mask(tile);
     var color            = sample_color(tile);
     var surface_gradient = sample_surface_gradient(tile, info.tangent_space);
