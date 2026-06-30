@@ -1,8 +1,8 @@
 #define_import_path bevy_terrain::fragment
 
 #import bevy_terrain::types::{Blend, Coordinate, WorldCoordinate, AtlasTile, TangentSpace}
-#import bevy_terrain::bindings::{terrain, terrain_view, geometry_tiles, approximate_height}
-#import bevy_terrain::functions::{compute_coordinate, compute_world_coordinate, compute_blend, compute_tangent_space, apply_height, high_precision}
+#import bevy_terrain::bindings::{terrain, terrain_view, geometry_tiles}
+#import bevy_terrain::functions::{compute_coordinate, compute_world_coordinate, compute_blend, compute_tangent_space, lookup_tile, apply_height, high_precision}
 #import bevy_terrain::attachments::{sample_height_mask, sample_surface_gradient}
 #import bevy_terrain::debug::{show_data_lod, show_geometry_lod, show_tile_tree, show_pixels}
 #import bevy_pbr::mesh_view_bindings::view
@@ -15,12 +15,6 @@ struct FragmentInput {
     @location(1) @interpolate(flat) tile_index: u32,
     @location(2) view_distance: f32,
     @location(3) height: f32,
-    @location(4) @interpolate(flat) atlas_index: u32,
-    @location(5) atlas_blend_ratio: f32,
-    @location(6) @interpolate(flat) atlas_face: u32,
-    @location(7) @interpolate(flat) atlas_lod: u32,
-    @location(8) @interpolate(flat) atlas_xy: vec2<f32>,
-    @location(9) atlas_uv: vec2<f32>,
 }
 
 struct FragmentOutput {
@@ -35,17 +29,6 @@ struct FragmentInfo {
     world_coordinate: WorldCoordinate,
     tangent_space: TangentSpace,
     blend: Blend,
-}
-
-fn atlas_tile_from_input(input: FragmentInput) -> AtlasTile {
-    var coordinate: Coordinate;
-    coordinate.face = input.atlas_face;
-    coordinate.lod = input.atlas_lod;
-    coordinate.xy = vec2<u32>(input.atlas_xy);
-    coordinate.uv = input.atlas_uv;
-    coordinate.uv_dx = dpdx(input.atlas_uv);
-    coordinate.uv_dy = dpdy(input.atlas_uv);
-    return AtlasTile(input.atlas_index, coordinate, input.atlas_blend_ratio);
 }
 
 fn fragment_info(input: FragmentInput) -> FragmentInfo{
@@ -113,7 +96,7 @@ fn fragment_debug(info: ptr<function, FragmentInfo>, output: ptr<function, Fragm
 fn fragment(input: FragmentInput) -> FragmentOutput {
     var info = fragment_info(input);
 
-    let tile             = atlas_tile_from_input(input);
+    let tile             = lookup_tile(info.coordinate, info.blend);
     let mask             = sample_height_mask(tile);
     let color            = vec4<f32>(0.5);
     let surface_gradient = sample_surface_gradient(tile, info.tangent_space);

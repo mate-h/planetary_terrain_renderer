@@ -2,10 +2,10 @@
 
 #import bevy_terrain::types::{Coordinate, WorldCoordinate, TileCoordinate, AtlasTile, Blend}
 #ifdef ATMOSPHERE
-#import bevy_terrain::bindings::{terrain, terrain_view, approximate_height, geometry_tiles, attachments, origins}
+#import bevy_terrain::bindings::{terrain, terrain_view, geometry_tiles, attachments, origins}
 #import bevy_terrain::functions::{compute_subdivision_coordinate}
 #else
-#import bevy_terrain::bindings::{terrain, tile_tree, terrain_view, approximate_height, geometry_tiles, attachments, origins}
+#import bevy_terrain::bindings::{terrain, tile_tree, terrain_view, geometry_tiles, attachments, origins}
 #import bevy_terrain::functions::{lookup_best, compute_subdivision_coordinate}
 #endif
 #import bevy_pbr::mesh_view_bindings::view

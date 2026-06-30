@@ -49,9 +49,9 @@ pub struct TerrainViewBindGroup {
     // Todo: replace with updatable uniform buffer
     #[storage(0, visibility(vertex, fragment), read_only)]
     pub(crate) terrain_view: Handle<ShaderBuffer>,
-    #[storage(1, visibility(vertex, fragment), read_only)]
+    #[storage(1, visibility(vertex), read_only)]
     pub(crate) approximate_height: Handle<ShaderBuffer>,
-    #[storage(2, visibility(vertex), read_only)]
+    #[storage(2, visibility(vertex, fragment), read_only)]
     pub(crate) tile_tree: Handle<ShaderBuffer>,
     #[storage(3, visibility(vertex, fragment), read_only, buffer)]
     pub(crate) geometry_tiles: Buffer,
@@ -63,7 +63,7 @@ pub struct TerrainViewBindGroup {
 pub struct TerrainViewBindGroupDebug {
     #[storage(0, visibility(vertex, fragment), read_only)]
     pub(crate) terrain_view: Handle<ShaderBuffer>,
-    #[storage(1, visibility(vertex, fragment), read_only)]
+    #[storage(1, visibility(vertex), read_only)]
     pub(crate) approximate_height: Handle<ShaderBuffer>,
     #[storage(2, visibility(vertex, fragment), read_only)]
     pub(crate) tile_tree: Handle<ShaderBuffer>,

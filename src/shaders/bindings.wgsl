@@ -29,7 +29,9 @@ struct Attachments {
 #ifndef PREPASS
 @group(0) @binding(0) var<uniform> view: View;
 @group(2) @binding(0) var<storage> terrain_view: TerrainView;
+#ifdef VERTEX
 @group(2) @binding(1) var<storage> approximate_height: f32;
+#endif
 @group(2) @binding(2) var<storage> tile_tree: array<TileTreeEntry>;
 @group(2) @binding(3) var<storage> geometry_tiles: array<GeometryTile>;
 #endif
