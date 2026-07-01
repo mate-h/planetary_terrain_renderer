@@ -4,9 +4,9 @@
 #import bevy_terrain::functions::lookup_tile
 #import bevy_pbr::pbr_types::{PbrInput, pbr_input_new}
 
-@group(3) @binding(0)
+@group(4) @binding(0)
 var gradient: texture_1d<f32>;
-@group(3) @binding(1)
+@group(4) @binding(1)
 var gradient_sampler: sampler;
 
 fn sample_color(tile: AtlasTile) -> vec4<f32> {

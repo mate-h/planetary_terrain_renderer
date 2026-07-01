@@ -3,16 +3,17 @@
 //! Run from this crate root:
 //! `cargo run --example atmosphere --features atmosphere_example`
 
-use bevy::camera_controller::free_camera::{FreeCamera, FreeCameraPlugin, UpAxis};
-use bevy::math::{DVec2, DVec3};
 use bevy::{
     asset::io::AssetSourceBuilder,
     camera::{Exposure, Hdr},
+    camera_controller::free_camera::{FreeCamera, FreeCameraPlugin, UpAxis},
     core_pipeline::tonemapping::{GranTurismo7Params, Tonemapping},
     input::keyboard::KeyCode,
     light::{
-        Atmosphere, SunDisk, VolumetricLight, atmosphere::ScatteringMedium, light_consts::lux,
+        Atmosphere, AtmosphereEnvironmentMapLight, SunDisk, VolumetricLight,
+        atmosphere::ScatteringMedium, light_consts::lux,
     },
+    math::{DVec2, DVec3},
     pbr::{AtmosphereMode, AtmosphereSettings},
     post_process::bloom::Bloom,
     prelude::*,
@@ -339,6 +340,7 @@ fn setup_scene(
                     ..default()
                 },
                 FloatingOrigin,
+                AtmosphereEnvironmentMapLight::default(),
             ))
             .id();
     });

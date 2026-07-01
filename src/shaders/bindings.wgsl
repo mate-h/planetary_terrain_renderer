@@ -27,24 +27,31 @@ struct Attachments {
 
 // terrain view bindings
 #ifndef PREPASS
+// Group 1 is reserved for Bevy's view binding-array layout (environment maps, etc.).
 @group(0) @binding(0) var<uniform> view: View;
-@group(2) @binding(0) var<storage> terrain_view: TerrainView;
+@group(3) @binding(0) var<storage> terrain_view: TerrainView;
 #ifdef VERTEX
-@group(2) @binding(1) var<storage> approximate_height: f32;
+@group(3) @binding(1) var<storage> approximate_height: f32;
 #endif
-@group(2) @binding(2) var<storage> tile_tree: array<TileTreeEntry>;
-@group(2) @binding(3) var<storage> geometry_tiles: array<GeometryTile>;
+@group(3) @binding(2) var<storage> tile_tree: array<TileTreeEntry>;
+@group(3) @binding(3) var<storage> geometry_tiles: array<GeometryTile>;
 #endif
 
 // terrain bindings
-@group(1) @binding(0)  var<storage> terrain: Terrain;
-@group(1) @binding(1)  var<uniform> attachments: Attachments;
-@group(1) @binding(2)  var terrain_sampler: sampler;
-@group(1) @binding(3)  var {0}_attachment: texture_2d_array<f32>;
-@group(1) @binding(4)  var {1}_attachment: texture_2d_array<f32>;
-@group(1) @binding(5)  var {2}_attachment: texture_2d_array<f32>;
-@group(1) @binding(6)  var {3}_attachment: texture_2d_array<f32>;
-@group(1) @binding(7)  var {4}_attachment: texture_2d_array<f32>;
-@group(1) @binding(8)  var {5}_attachment: texture_2d_array<f32>;
-@group(1) @binding(9)  var {6}_attachment: texture_2d_array<f32>;
-@group(1) @binding(10) var {7}_attachment: texture_2d_array<f32>;
+#ifdef PREPASS
+const TERRAIN_BIND_GROUP: u32 = 1u;
+#else
+const TERRAIN_BIND_GROUP: u32 = 2u;
+#endif
+
+@group(TERRAIN_BIND_GROUP) @binding(0)  var<storage> terrain: Terrain;
+@group(TERRAIN_BIND_GROUP) @binding(1)  var<uniform> attachments: Attachments;
+@group(TERRAIN_BIND_GROUP) @binding(2)  var terrain_sampler: sampler;
+@group(TERRAIN_BIND_GROUP) @binding(3)  var {0}_attachment: texture_2d_array<f32>;
+@group(TERRAIN_BIND_GROUP) @binding(4)  var {1}_attachment: texture_2d_array<f32>;
+@group(TERRAIN_BIND_GROUP) @binding(5)  var {2}_attachment: texture_2d_array<f32>;
+@group(TERRAIN_BIND_GROUP) @binding(6)  var {3}_attachment: texture_2d_array<f32>;
+@group(TERRAIN_BIND_GROUP) @binding(7)  var {4}_attachment: texture_2d_array<f32>;
+@group(TERRAIN_BIND_GROUP) @binding(8)  var {5}_attachment: texture_2d_array<f32>;
+@group(TERRAIN_BIND_GROUP) @binding(9)  var {6}_attachment: texture_2d_array<f32>;
+@group(TERRAIN_BIND_GROUP) @binding(10) var {7}_attachment: texture_2d_array<f32>;

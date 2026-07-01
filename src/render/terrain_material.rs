@@ -10,12 +10,13 @@ use crate::{
     terrain_data::{GpuTileAtlas, TileAtlas},
     terrain_view::TerrainViewComponents,
 };
-use bevy::shader::{ShaderDefVal, ShaderRef};
 use bevy::{
+    light::EnvironmentMapLight,
     pbr::{
-        ExtractedAtmosphere, MATERIAL_BIND_GROUP_INDEX, MaterialExtractionSystems, MeshPipeline,
-        MeshPipelineSystems, MeshPipelineViewLayoutKey, RenderMaterialInstance,
-        RenderMaterialInstances, SetMaterialBindGroup, SetMeshViewBindGroup,
+        ExtractedAtmosphere, MaterialExtractionSystems, MeshPipeline, MeshPipelineSystems,
+        MeshPipelineViewLayoutKey, MeshPipelineViewLayouts, RenderMaterialInstance,
+        RenderMaterialInstances, RenderViewLightProbes, SetMaterialBindGroup, SetMeshViewBindGroup,
+        SetMeshViewBindingArrayBindGroup,
     },
     prelude::*,
     render::{
@@ -29,8 +30,12 @@ use bevy::{
         sync_world::MainEntity,
         view::{ExtractedView, RetainedViewEntity},
     },
+    shader::{ShaderDefVal, ShaderRef},
 };
 use std::{hash::Hash, marker::PhantomData};
+
+/// Bevy's mesh view binding-array layout occupies bind group 1 (environment maps, etc.).
+pub(crate) const TERRAIN_MATERIAL_BIND_GROUP_INDEX: usize = 4;
 
 #[derive(PartialEq, Eq, Clone, Hash)]
 pub struct TerrainPipelineKey {
@@ -62,6 +67,7 @@ bitflags::bitflags! {
         const TEST3              = 1 << 16;
         const HDR                = 1 << 17;
         const ATMOSPHERE         = 1 << 18;
+        const ENVIRONMENT_MAP    = 1 << 19;
         const MSAA_RESERVED_BITS = TerrainPipelineFlags::MSAA_MASK_BITS << TerrainPipelineFlags::MSAA_SHIFT_BITS;
     }
 }
@@ -199,6 +205,9 @@ impl TerrainPipelineFlags {
         if self.contains(TerrainPipelineFlags::ATMOSPHERE) {
             shader_defs.push("ATMOSPHERE".into());
         }
+        if self.contains(TerrainPipelineFlags::ENVIRONMENT_MAP) {
+            shader_defs.push("ENVIRONMENT_MAP".into());
+        }
 
         shader_defs
     }
@@ -208,6 +217,7 @@ fn terrain_mesh_view_layout_key(
     multisampled: bool,
     atmosphere: bool,
     hdr: bool,
+    environment_map: bool,
 ) -> MeshPipelineViewLayoutKey {
     let mut key = MeshPipelineViewLayoutKey::empty();
     if multisampled {
@@ -215,6 +225,9 @@ fn terrain_mesh_view_layout_key(
     }
     if atmosphere {
         key |= MeshPipelineViewLayoutKey::ATMOSPHERE;
+    }
+    if environment_map {
+        key |= MeshPipelineViewLayoutKey::ENVIRONMENT_MAP;
     }
     #[cfg(feature = "bluenoise_texture")]
     {
@@ -246,12 +259,8 @@ fn extract_terrain_materials<M: Material>(
 /// The pipeline used to render the terrain entities.
 #[derive(Resource)]
 pub struct TerrainRenderPipeline<M: Material> {
-    view_layout: BindGroupLayoutDescriptor,
-    view_layout_multisampled: BindGroupLayoutDescriptor,
-    view_layout_atmosphere: BindGroupLayoutDescriptor,
-    view_layout_multisampled_atmosphere: BindGroupLayoutDescriptor,
-    view_layout_atmosphere_hdr: BindGroupLayoutDescriptor,
-    view_layout_multisampled_atmosphere_hdr: BindGroupLayoutDescriptor,
+    mesh_view_layouts: MeshPipelineViewLayouts,
+    binding_arrays_are_usable: bool,
     terrain_layout: BindGroupLayoutDescriptor,
     terrain_view_layout: BindGroupLayoutDescriptor,
     terrain_view_layout_debug: BindGroupLayoutDescriptor,
@@ -280,30 +289,8 @@ impl<M: Material> FromWorld for TerrainRenderPipeline<M> {
         };
 
         Self {
-            view_layout: mesh_pipeline
-                .get_view_layout(terrain_mesh_view_layout_key(false, false, false))
-                .main_layout
-                .clone(),
-            view_layout_multisampled: mesh_pipeline
-                .get_view_layout(terrain_mesh_view_layout_key(true, false, false))
-                .main_layout
-                .clone(),
-            view_layout_atmosphere: mesh_pipeline
-                .get_view_layout(terrain_mesh_view_layout_key(false, true, false))
-                .main_layout
-                .clone(),
-            view_layout_multisampled_atmosphere: mesh_pipeline
-                .get_view_layout(terrain_mesh_view_layout_key(true, true, false))
-                .main_layout
-                .clone(),
-            view_layout_atmosphere_hdr: mesh_pipeline
-                .get_view_layout(terrain_mesh_view_layout_key(false, true, true))
-                .main_layout
-                .clone(),
-            view_layout_multisampled_atmosphere_hdr: mesh_pipeline
-                .get_view_layout(terrain_mesh_view_layout_key(true, true, true))
-                .main_layout
-                .clone(),
+            mesh_view_layouts: mesh_pipeline.view_layouts.clone(),
+            binding_arrays_are_usable: mesh_pipeline.binding_arrays_are_usable,
             terrain_layout: prepass_pipelines.terrain_layout.clone(),
             terrain_view_layout: prepass_pipelines.terrain_view_layout.clone(),
             terrain_view_layout_debug: prepass_pipelines.terrain_view_layout_debug.clone(),
@@ -321,29 +308,26 @@ impl<M: Material> SpecializedRenderPipeline for TerrainRenderPipeline<M> {
     fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
         let mut shader_defs = key.flags.shader_defs();
 
-        let mut bind_group_layouts = match (
+        if key.flags.msaa_samples() > 1 {
+            shader_defs.push("MULTISAMPLED".into());
+        }
+
+        let view_layout_key = terrain_mesh_view_layout_key(
             key.flags.msaa_samples() > 1,
             key.flags.contains(TerrainPipelineFlags::ATMOSPHERE),
             key.flags.contains(TerrainPipelineFlags::HDR),
-        ) {
-            (false, false, _) => vec![self.view_layout.clone()],
-            (true, false, _) => {
-                shader_defs.push("MULTISAMPLED".into());
-                vec![self.view_layout_multisampled.clone()]
-            }
-            (false, true, false) => vec![self.view_layout_atmosphere.clone()],
-            (true, true, false) => {
-                shader_defs.push("MULTISAMPLED".into());
-                vec![self.view_layout_multisampled_atmosphere.clone()]
-            }
-            (false, true, true) => vec![self.view_layout_atmosphere_hdr.clone()],
-            (true, true, true) => {
-                shader_defs.push("MULTISAMPLED".into());
-                vec![self.view_layout_multisampled_atmosphere_hdr.clone()]
-            }
-        };
+            key.flags.contains(TerrainPipelineFlags::ENVIRONMENT_MAP),
+        );
+        if self.binding_arrays_are_usable {
+            shader_defs.push("MULTIPLE_LIGHT_PROBES_IN_ARRAY".into());
+        }
 
-        bind_group_layouts.push(self.terrain_layout.clone());
+        let view_layout = self.mesh_view_layouts.get_view_layout(view_layout_key);
+        let mut bind_group_layouts = vec![
+            view_layout.main_layout.clone(),
+            view_layout.binding_array_layout.clone(),
+            self.terrain_layout.clone(),
+        ];
         bind_group_layouts.push(
             if key.flags.contains(TerrainPipelineFlags::SHOW_TILE_TREE)
                 && !key.flags.contains(TerrainPipelineFlags::ATMOSPHERE)
@@ -427,9 +411,10 @@ pub fn init_terrain_render_pipeline<M: Material>(world: &mut World) {
 pub(crate) type DrawTerrain = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
-    SetTerrainBindGroup<1>,
-    SetTerrainViewBindGroup<2>,
-    SetMaterialBindGroup<MATERIAL_BIND_GROUP_INDEX>,
+    SetMeshViewBindingArrayBindGroup<1>,
+    SetTerrainBindGroup<2>,
+    SetTerrainViewBindGroup<3>,
+    SetMaterialBindGroup<TERRAIN_MATERIAL_BIND_GROUP_INDEX>,
     DrawTerrainCommand,
 );
 
@@ -444,13 +429,19 @@ pub(crate) fn queue_terrain<M: Material>(
     mut terrain_phases: ResMut<ViewSortedRenderPhases<TerrainItem>>,
     gpu_tile_atlases: Res<TerrainComponents<GpuTileAtlas>>,
     gpu_terrain_views: Res<TerrainViewComponents<GpuTerrainView>>,
-    mut views: Query<(MainEntity, &Msaa, &ExtractedView, Has<ExtractedAtmosphere>)>,
+    mut views: Query<(
+        MainEntity,
+        &Msaa,
+        &ExtractedView,
+        Has<ExtractedAtmosphere>,
+        Has<RenderViewLightProbes<EnvironmentMapLight>>,
+    )>,
 ) where
     M::Data: PartialEq + Eq + Hash + Clone,
 {
     let draw_function = draw_functions.read().get_id::<DrawTerrain>().unwrap();
 
-    for (view, msaa, extracted_view, has_atmosphere) in &mut views {
+    for (view, msaa, extracted_view, has_atmosphere, has_environment_maps) in &mut views {
         let Some(terrain_phase) = terrain_phases.get_mut(&RetainedViewEntity {
             main_entity: view.into(),
             auxiliary_entity: Entity::PLACEHOLDER.into(),
@@ -477,6 +468,9 @@ pub(crate) fn queue_terrain<M: Material>(
             if has_atmosphere {
                 flags |= TerrainPipelineFlags::ATMOSPHERE;
             }
+            if has_environment_maps {
+                flags |= TerrainPipelineFlags::ENVIRONMENT_MAP;
+            }
 
             if let Some(debug) = &debug {
                 flags |= TerrainPipelineFlags::from_debug(debug);
@@ -484,7 +478,8 @@ pub(crate) fn queue_terrain<M: Material>(
                 flags |= TerrainPipelineFlags::LIGHTING
                     | TerrainPipelineFlags::MORPH
                     | TerrainPipelineFlags::BLEND
-                    | TerrainPipelineFlags::SAMPLE_GRAD;
+                    | TerrainPipelineFlags::SAMPLE_GRAD
+                    | TerrainPipelineFlags::HIGH_PRECISION;
             }
 
             let key = TerrainPipelineKey {

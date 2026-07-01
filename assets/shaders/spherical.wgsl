@@ -10,11 +10,11 @@ struct GradientInfo {
     mode: u32,
 }
 
-@group(3) @binding(0)
+@group(4) @binding(0)
 var gradient: texture_2d<f32>;
-@group(3) @binding(1)
+@group(4) @binding(1)
 var gradient_sampler: sampler;
-@group(3) @binding(2)
+@group(4) @binding(2)
 var<uniform> gradient_info: GradientInfo;
 
 fn sample_albedo(tile: AtlasTile) -> vec4<f32> {
