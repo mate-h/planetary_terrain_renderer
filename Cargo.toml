@@ -47,6 +47,11 @@ name = "spherical"
 path = "examples/spherical.rs"
 
 [[example]]
+name = "mount_baker"
+path = "examples/mount_baker.rs"
+required-features = ["atmosphere_example"]
+
+[[example]]
 name = "atmosphere"
 path = "examples/atmosphere.rs"
 required-features = ["atmosphere_example"]
