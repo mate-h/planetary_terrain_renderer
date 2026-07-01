@@ -21,10 +21,11 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("webgpu"))
 rand = ["dep:rand"]
 metal_capture = []
 bluenoise_texture = ["bevy/bluenoise_texture"]
+atmosphere_example = ["bevy/free_camera", "bevy/https", "bevy/tonemapping_luts"]
 
 [dependencies]
-bevy = { path = "../bevy", default-features = false, features = ["3d"] }
-big_space = { path = "../big_space", features = ["i32"] }
+bevy = { git = "https://github.com/mate-h/bevy", branch = "m/outdoor-scene", default-features = false, features = ["3d"] }
+big_space = { git = "https://github.com/mate-h/big_space", branch = "bevy-0.20", features = ["i32"] }
 tiff = "0.10"
 bytemuck = "1.14"
 ndarray = "0.16.1"
@@ -46,12 +47,17 @@ name = "spherical"
 path = "examples/spherical.rs"
 
 [[example]]
+name = "atmosphere"
+path = "examples/atmosphere.rs"
+required-features = ["atmosphere_example"]
+
+[[example]]
 name = "precision_demo"
 path = "examples/precision_demo.rs"
 required-features = ["rand"]
 
 [patch.crates-io]
-wgpu = { git = "https://github.com/stuartparmenter/wgpu", rev = "af64796742a9046d4c0b1bdd06e2439c3435e93e" }
-wgpu-types = { git = "https://github.com/stuartparmenter/wgpu", rev = "af64796742a9046d4c0b1bdd06e2439c3435e93e" }
-wgpu-naga-bridge = { git = "https://github.com/stuartparmenter/wgpu", rev = "af64796742a9046d4c0b1bdd06e2439c3435e93e" }
-naga = { git = "https://github.com/stuartparmenter/wgpu", rev = "af64796742a9046d4c0b1bdd06e2439c3435e93e" }
+wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "a03be8d2232ad3507b69e431c02e483a5ea792d0" }
+wgpu-types = { git = "https://github.com/gfx-rs/wgpu", rev = "a03be8d2232ad3507b69e431c02e483a5ea792d0" }
+wgpu-naga-bridge = { git = "https://github.com/gfx-rs/wgpu", rev = "a03be8d2232ad3507b69e431c02e483a5ea792d0" }
+naga = { git = "https://github.com/gfx-rs/wgpu", rev = "a03be8d2232ad3507b69e431c02e483a5ea792d0" }
