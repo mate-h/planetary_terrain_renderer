@@ -70,7 +70,7 @@ pub(crate) fn spawn_terrains<M: Material>(
                 let terrain = commands
                     .spawn((
                         config.shape.transform(),
-                        TileAtlas::new(&config, &mut buffers, &settings),
+                        TileAtlas::new(&config, &settings),
                         MeshMaterial3d(materials.add(material)),
                         Visibility::Visible,
                         NoCpuCulling,

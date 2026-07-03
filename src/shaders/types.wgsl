@@ -1,5 +1,7 @@
 #define_import_path bevy_terrain::types
 
+const INVALID_ATLAS_INDEX: u32 = 4294967295u;
+
 struct Terrain {
     lod_count: u32,
     scale: vec3<f32>,
@@ -109,6 +111,28 @@ struct SurfaceApproximation {
 struct BestLookup {
     tile: AtlasTile,
     tile_tree_uv: vec2<f32>,
+}
+
+// Parameters of the RDR2-style raymarched terrain shadow map.
+// The map covers a tangent-frame region around the view: texel (u, v) maps to the
+// world position center + u * east + v * north, projected onto the terrain surface.
+struct TerrainShadow {
+    unit_from_world: mat4x4<f32>,
+    center: vec3<f32>,          // on the ellipsoid surface (height 0), world space
+    extent: f32,                // half size of the map, meters
+    east: vec3<f32>,
+    texel_size: f32,
+    north: vec3<f32>,
+    curvature: f32,             // 1 / (2 * planet radius), 0 for planar terrain
+    up: vec3<f32>,
+    max_distance: f32,          // maximum horizon scan distance, meters
+    light_direction: vec3<f32>, // direction towards the sun, world space
+    penumbra_scale: f32,        // tan(sun angular radius) * softness
+    min_penumbra: f32,
+    map_size: f32,
+    steps: u32,
+    enabled: u32,
+    lod: u32,                   // fixed tile tree lod used for height sampling
 }
 
 struct AttachmentConfig {

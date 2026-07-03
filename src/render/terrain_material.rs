@@ -8,6 +8,7 @@ use crate::{
     spawn::{TerrainsToSpawn, spawn_terrains},
     terrain::TerrainComponents,
     terrain_data::{GpuTileAtlas, TileAtlas},
+    terrain_shadow::TerrainShadowSettings,
     terrain_view::TerrainViewComponents,
 };
 use bevy::{
@@ -68,6 +69,7 @@ bitflags::bitflags! {
         const HDR                = 1 << 17;
         const ATMOSPHERE         = 1 << 18;
         const ENVIRONMENT_MAP    = 1 << 19;
+        const TERRAIN_SHADOW     = 1 << 20;
         const MSAA_RESERVED_BITS = TerrainPipelineFlags::MSAA_MASK_BITS << TerrainPipelineFlags::MSAA_SHIFT_BITS;
     }
 }
@@ -207,6 +209,9 @@ impl TerrainPipelineFlags {
         }
         if self.contains(TerrainPipelineFlags::ENVIRONMENT_MAP) {
             shader_defs.push("ENVIRONMENT_MAP".into());
+        }
+        if self.contains(TerrainPipelineFlags::TERRAIN_SHADOW) {
+            shader_defs.push("TERRAIN_SHADOW".into());
         }
 
         shader_defs
@@ -423,6 +428,7 @@ pub(crate) type DrawTerrain = (
 pub(crate) fn queue_terrain<M: Material>(
     draw_functions: Res<DrawFunctions<TerrainItem>>,
     debug: Option<Res<DebugTerrain>>,
+    shadow_settings: Res<TerrainShadowSettings>,
     pipeline_cache: Res<PipelineCache>,
     terrain_pipeline: Res<TerrainRenderPipeline<M>>,
     mut pipelines: ResMut<SpecializedRenderPipelines<TerrainRenderPipeline<M>>>,
@@ -470,6 +476,9 @@ pub(crate) fn queue_terrain<M: Material>(
             }
             if has_environment_maps {
                 flags |= TerrainPipelineFlags::ENVIRONMENT_MAP;
+            }
+            if shadow_settings.enabled {
+                flags |= TerrainPipelineFlags::TERRAIN_SHADOW;
             }
 
             if let Some(debug) = &debug {

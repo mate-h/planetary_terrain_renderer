@@ -1,7 +1,6 @@
 use crate::{
     math::{TerrainShape, TileCoordinate},
     plugin::TerrainSettings,
-    render::TerrainUniform,
     terrain::TerrainConfig,
     terrain_data::{
         Attachment, AttachmentData, AttachmentLabel, AttachmentTile, AttachmentTileWithData,
@@ -10,11 +9,9 @@ use crate::{
     terrain_view::TerrainViewComponents,
 };
 use bevy::{
-    asset::RenderAssetUsages,
     camera::visibility::{VisibilityClass, add_visibility_class},
     platform::collections::{HashMap, HashSet},
     prelude::*,
-    render::{render_resource::*, storage::ShaderBuffer},
     tasks::Task,
 };
 use big_space::prelude::CellCoord;
@@ -73,27 +70,16 @@ pub struct TileAtlas {
     pub(crate) max_height: f32,
     pub(crate) height_scale: f32,
     pub(crate) shape: TerrainShape,
-
-    pub(crate) terrain_buffer: Handle<ShaderBuffer>,
 }
 
 impl TileAtlas {
     /// Creates a new tile_tree from a terrain config.
-    pub fn new(
-        config: &TerrainConfig,
-        buffers: &mut Assets<ShaderBuffer>,
-        settings: &TerrainSettings,
-    ) -> Self {
+    pub fn new(config: &TerrainConfig, settings: &TerrainSettings) -> Self {
         let attachments = config
             .attachments
             .iter()
             .map(|(label, attachment)| (label.clone(), Attachment::new(attachment, &config.path)))
             .collect();
-
-        let terrain_buffer = buffers.add(ShaderBuffer::with_size(
-            TerrainUniform::min_size().get() as usize,
-            RenderAssetUsages::all(),
-        ));
 
         Self {
             attachments,
@@ -108,7 +94,6 @@ impl TileAtlas {
             max_height: config.max_height,
             height_scale: 1.0,
             shape: config.shape,
-            terrain_buffer,
         }
     }
 
@@ -176,18 +161,6 @@ impl TileAtlas {
             for tile_coordinate in tile_tree.requested_tiles.drain(..) {
                 tile_atlas.request_tile(tile_coordinate);
             }
-        }
-    }
-
-    pub fn update_terrain_buffer(
-        mut tile_atlases: Query<(&mut TileAtlas, &GlobalTransform)>,
-        mut buffers: ResMut<Assets<ShaderBuffer>>,
-    ) {
-        for (tile_atlas, global_transform) in &mut tile_atlases {
-            let Some(mut terrain_buffer) = buffers.get_mut(&tile_atlas.terrain_buffer) else {
-                continue;
-            };
-            terrain_buffer.set_data(TerrainUniform::new(&tile_atlas, global_transform));
         }
     }
 

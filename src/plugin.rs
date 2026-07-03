@@ -2,14 +2,18 @@ use crate::{
     formats::{TerrainConfigLoader, TiffLoader},
     preprocess::{MipPipelines, mip_prepass},
     render::{
-        DepthCopyPipeline, GpuTerrain, GpuTerrainView, TerrainItem, TerrainTilingPrepassPipelines,
-        TilingPrepassItem, extract_terrain_phases, prepare_terrain_depth_textures,
-        queue_tiling_prepass, terrain_pass, tiling_prepass,
+        DepthCopyPipeline, GpuTerrain, GpuTerrainShadow, GpuTerrainView, TerrainItem,
+        TerrainShadowPipelines, TerrainTilingPrepassPipelines, TerrainUniform, TilingPrepassItem,
+        extract_terrain_phases, extract_terrain_uniform, prepare_terrain_depth_textures,
+        queue_tiling_prepass, terrain_pass, terrain_shadow_pass, tiling_prepass,
     },
     shaders::{InternalShaders, load_terrain_shaders},
     terrain::{TerrainComponents, TerrainConfig},
     terrain_data::{
         AttachmentLabel, GpuTileAtlas, TileAtlas, TileTree, finish_loading, start_loading,
+    },
+    terrain_shadow::{
+        TerrainShadowSettings, TerrainShadowUniform, extract_terrain_shadow, update_terrain_shadow,
     },
     terrain_view::TerrainViewComponents,
 };
@@ -71,6 +75,8 @@ impl Plugin for TerrainPlugin {
             .init_resource::<InternalShaders>()
             .init_resource::<TerrainViewComponents<TileTree>>()
             .init_resource::<TerrainSettings>()
+            .init_resource::<TerrainShadowSettings>()
+            .init_resource::<TerrainViewComponents<TerrainShadowUniform>>()
             .init_asset_loader::<TerrainConfigLoader>()
             .init_asset_loader::<TiffLoader>()
             .add_systems(
@@ -86,7 +92,7 @@ impl Plugin for TerrainPlugin {
                         TileTree::adjust_to_tile_atlas,
                         TileTree::generate_surface_approximation,
                         TileTree::update_terrain_view_buffer,
-                        TileAtlas::update_terrain_buffer,
+                        update_terrain_shadow,
                     )
                         .chain()
                         .after(TransformSystems::Propagate),
@@ -95,20 +101,28 @@ impl Plugin for TerrainPlugin {
         app.sub_app_mut(RenderApp)
             .init_resource::<SpecializedComputePipelines<MipPipelines>>()
             .init_resource::<SpecializedComputePipelines<TerrainTilingPrepassPipelines>>()
+            .init_resource::<SpecializedComputePipelines<TerrainShadowPipelines>>()
             .init_resource::<TerrainComponents<GpuTileAtlas>>()
             .init_resource::<TerrainComponents<GpuTerrain>>()
+            .init_resource::<TerrainComponents<TerrainUniform>>()
             .init_resource::<TerrainViewComponents<GpuTerrainView>>()
+            .init_resource::<TerrainViewComponents<GpuTerrainShadow>>()
             .init_resource::<TerrainViewComponents<TilingPrepassItem>>()
+            .init_resource::<TerrainShadowSettings>()
+            .init_resource::<TerrainViewComponents<TerrainShadowUniform>>()
             .init_resource::<DrawFunctions<TerrainItem>>()
             .init_resource::<ViewSortedRenderPhases<TerrainItem>>()
             .add_systems(
                 ExtractSchedule,
                 (
                     extract_terrain_phases,
+                    extract_terrain_shadow,
+                    extract_terrain_uniform,
                     GpuTileAtlas::initialize,
                     GpuTileAtlas::extract.after(GpuTileAtlas::initialize),
                     GpuTerrain::initialize.after(GpuTileAtlas::initialize),
                     GpuTerrainView::initialize,
+                    GpuTerrainShadow::initialize,
                 ),
             )
             .add_systems(
@@ -117,6 +131,7 @@ impl Plugin for TerrainPlugin {
                     (
                         GpuTileAtlas::prepare,
                         GpuTerrain::prepare,
+                        GpuTerrainShadow::prepare,
                         GpuTerrainView::prepare_terrain_view,
                         GpuTerrainView::prepare_indirect,
                         GpuTerrainView::prepare_refine_tiles,
@@ -124,13 +139,20 @@ impl Plugin for TerrainPlugin {
                         .in_set(RenderSystems::PrepareBindGroups),
                     sort_phase_system::<TerrainItem>.in_set(RenderSystems::PhaseSort),
                     prepare_terrain_depth_textures.in_set(RenderSystems::PrepareResources),
-                    (queue_tiling_prepass, GpuTileAtlas::queue).in_set(RenderSystems::Queue),
+                    (
+                        queue_tiling_prepass,
+                        GpuTileAtlas::queue,
+                        GpuTerrainShadow::queue,
+                    )
+                        .in_set(RenderSystems::Queue),
                     GpuTileAtlas::_cleanup.in_set(RenderSystems::Cleanup),
                 ),
             )
             .add_systems(
                 RenderGraph,
-                (mip_prepass, tiling_prepass).chain().before(camera_driver),
+                (mip_prepass, tiling_prepass, terrain_shadow_pass)
+                    .chain()
+                    .before(camera_driver),
             )
             .add_systems(
                 Core3d,
@@ -151,6 +173,7 @@ impl Plugin for TerrainPlugin {
 
         app.sub_app_mut(RenderApp)
             .init_resource::<TerrainTilingPrepassPipelines>()
+            .init_resource::<TerrainShadowPipelines>()
             .init_resource::<MipPipelines>()
             .init_resource::<DepthCopyPipeline>();
     }

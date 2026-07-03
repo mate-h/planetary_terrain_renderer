@@ -15,6 +15,7 @@ pub const REFINE_TILES_SHADER: &str =
 pub(crate) const PICKING_SHADER: &str = "embedded://bevy_terrain/shaders/picking.wgsl";
 pub(crate) const DEPTH_COPY_SHADER: &str = "embedded://bevy_terrain/shaders/depth_copy.wgsl";
 pub(crate) const MIP_SHADER: &str = "embedded://bevy_terrain/shaders/mipmap.wgsl";
+pub(crate) const SHADOW_MAP_SHADER: &str = "embedded://bevy_terrain/shaders/shadow_map.wgsl";
 
 #[derive(Default, Resource)]
 pub(crate) struct InternalShaders(Vec<Handle<Shader>>);
@@ -59,6 +60,8 @@ pub(crate) fn load_terrain_shaders(app: &mut App, attachments: &[AttachmentLabel
     embedded_asset!(app, "types.wgsl");
     embedded_asset!(app, "attachments.wgsl");
     embedded_asset!(app, "functions.wgsl");
+    embedded_asset!(app, "heightfield.wgsl");
+    embedded_asset!(app, "shadow_map.wgsl");
     embedded_asset!(app, "debug.wgsl");
     embedded_asset!(app, "render/vertex.wgsl");
     embedded_asset!(app, "render/fragment.wgsl");
@@ -76,6 +79,7 @@ pub(crate) fn load_terrain_shaders(app: &mut App, attachments: &[AttachmentLabel
             "embedded://bevy_terrain/shaders/types.wgsl",
             "embedded://bevy_terrain/shaders/attachments.wgsl",
             "embedded://bevy_terrain/shaders/functions.wgsl",
+            "embedded://bevy_terrain/shaders/heightfield.wgsl",
             "embedded://bevy_terrain/shaders/debug.wgsl",
             "embedded://bevy_terrain/shaders/render/vertex.wgsl",
             "embedded://bevy_terrain/shaders/render/fragment.wgsl",

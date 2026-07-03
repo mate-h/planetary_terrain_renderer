@@ -1,13 +1,16 @@
 #define_import_path bevy_terrain::functions
 
 #ifdef VERTEX
-#import bevy_terrain::bindings::{terrain, origins, terrain_view, geometry_tiles, tile_tree, view, approximate_height}
+#import bevy_terrain::bindings::{terrain_data, origins, terrain_view, geometry_tiles, tile_tree, view, approximate_height}
 #endif
 #ifdef PREPASS
-#import bevy_terrain::bindings::{terrain, origins, terrain_view, geometry_tiles, tile_tree, view, approximate_height}
+#import bevy_terrain::bindings::{terrain_data, origins, terrain_view, geometry_tiles, tile_tree, view, approximate_height}
 #endif
 #ifdef FRAGMENT
-#import bevy_terrain::bindings::{terrain, origins, terrain_view, geometry_tiles, tile_tree, view}
+#import bevy_terrain::bindings::{terrain_data, origins, terrain_view, geometry_tiles, tile_tree, view}
+#endif
+#ifdef SHADOW_COMPUTE
+#import bevy_terrain::bindings::{terrain_data, terrain_view, tile_tree}
 #endif
 #import bevy_terrain::types::{TileCoordinate, WorldCoordinate, TileTree, TileTreeEntry, AtlasTile, Blend, BestLookup, Coordinate, Morph, TangentSpace}
 #import bevy_render::maths::{affine3_to_square, mat2x4_f32_to_mat3x3_unpack}
@@ -105,10 +108,10 @@ fn compute_world_coordinate_imprecise(coordinate: Coordinate, height: f32) -> Wo
     let unit_normal   = vec3<f32>(0.0, 1.0, 0.0);
 #endif
 
-    let position_world_from_unit = affine3_to_square(terrain.world_from_unit);
+    let position_world_from_unit = affine3_to_square(terrain_data.terrain.world_from_unit);
     let world_position           = (position_world_from_unit * vec4<f32>(unit_position, 1.0)).xyz;
 
-    let normal_world_from_unit = mat2x4_f32_to_mat3x3_unpack(terrain.unit_from_world_transpose_a, terrain.unit_from_world_transpose_b);
+    let normal_world_from_unit = mat2x4_f32_to_mat3x3_unpack(terrain_data.terrain.unit_from_world_transpose_a, terrain_data.terrain.unit_from_world_transpose_b);
     let world_normal           = normalize(normal_world_from_unit * unit_normal);
 
     let view_distance = distance(world_position + height * world_normal, terrain_view.world_position);
@@ -176,7 +179,7 @@ fn compute_blend(view_distance: f32) -> Blend {
     let ratio = 0.0;
 #endif
 
-    return Blend(min(u32(target_lod), terrain.lod_count - 1), select(ratio, 0.0, target_lod < 1 || u32(target_lod) >= terrain.lod_count));
+    return Blend(min(u32(target_lod), terrain_data.terrain.lod_count - 1), select(ratio, 0.0, target_lod < 1 || u32(target_lod) >= terrain_data.terrain.lod_count));
 }
 
 fn compute_view_coordinate(face: u32, lod: u32) -> Coordinate {
@@ -244,7 +247,7 @@ fn compute_tile_tree_uv(coordinate: Coordinate) -> vec2<f32> {
 
 fn lookup_tile_tree_entry(coordinate: Coordinate) -> TileTreeEntry {
     let tree_xy    = vec2<u32>(coordinate.xy) % terrain_view.tree_size;
-    let tree_index = ((coordinate.face * terrain.lod_count +
+    let tree_index = ((coordinate.face * terrain_data.terrain.lod_count +
                        coordinate.lod) * terrain_view.tree_size +
                        tree_xy.x)      * terrain_view.tree_size +
                        tree_xy.y;
@@ -260,7 +263,7 @@ fn lookup_best(lookup_coordinate: Coordinate) -> BestLookup {
     coordinate_change_lod(&new_coordinate , 0u);
     var new_tile_tree_uv = new_coordinate.uv;
 
-    while (new_coordinate.lod < terrain.lod_count && !any(new_tile_tree_uv <= vec2<f32>(0.0)) && !any(new_tile_tree_uv >= vec2<f32>(1.0))) {
+    while (new_coordinate.lod < terrain_data.terrain.lod_count && !any(new_tile_tree_uv <= vec2<f32>(0.0)) && !any(new_tile_tree_uv >= vec2<f32>(1.0))) {
         coordinate  = new_coordinate;
         tile_tree_uv = new_tile_tree_uv;
 

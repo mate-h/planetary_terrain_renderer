@@ -1,5 +1,5 @@
 #import bevy_terrain::types::{TileCoordinate, GeometryTile, Coordinate, WorldCoordinate, Blend}
-#import bevy_terrain::bindings::{terrain, terrain_view, final_tiles, approximate_height, temporary_tiles, state}
+#import bevy_terrain::bindings::{terrain_data, terrain_view, final_tiles, approximate_height, temporary_tiles, state}
 #import bevy_terrain::functions::{compute_subdivision_coordinate, compute_world_coordinate, compute_morph, compute_blend, lookup_tile, apply_height}
 #import bevy_render::maths::affine3_to_square
 
@@ -38,8 +38,8 @@ fn frustum_cull_aabb(coordinate: Coordinate) -> bool {
         let corner_uv               = vec2<f32>(f32(i & 1u), f32(i >> 1u & 1u));
         let corner_coordinate       = Coordinate(coordinate.face, coordinate.lod, coordinate.xy, corner_uv);
         let corner_world_coordinate = compute_world_coordinate(corner_coordinate);
-        let corner_low              = apply_height(corner_world_coordinate, terrain.min_height);
-        let corner_high             = apply_height(corner_world_coordinate, terrain.max_height);
+        let corner_low              = apply_height(corner_world_coordinate, terrain_data.terrain.min_height);
+        let corner_high             = apply_height(corner_world_coordinate, terrain_data.terrain.max_height);
 
         aabb_min = min(aabb_min, min(corner_low, corner_high));
         aabb_max = max(aabb_max, max(corner_low, corner_high));
@@ -65,8 +65,8 @@ fn frustum_cull_sphere(coordinate: Coordinate) -> bool {
         let corner_uv               = vec2<f32>(f32(i & 1u), f32(i >> 1u & 1u));
         let corner_coordinate       = Coordinate(coordinate.face, coordinate.lod, coordinate.xy, corner_uv);
         let corner_world_coordinate = compute_world_coordinate(corner_coordinate);
-        let corner_low              = apply_height(corner_world_coordinate, terrain.min_height);
-        let corner_high             = apply_height(corner_world_coordinate, terrain.max_height);
+        let corner_low              = apply_height(corner_world_coordinate, terrain_data.terrain.min_height);
+        let corner_high             = apply_height(corner_world_coordinate, terrain_data.terrain.max_height);
 
         radius = max(radius, max(distance(center_position, corner_low), distance(center_position, corner_high)));
     }
@@ -93,14 +93,14 @@ fn horizon_cull(coordinate: Coordinate, world_coordinate: WorldCoordinate) -> bo
     // if this point is not visible, no other point of the tile should be visible
 
     // transform from world to unit coordinates centered on the world origin, this eliminates the oblatness of the ellipsoid
-    let ellipsoid_to_sphere = 1.0 / terrain.scale;
+    let ellipsoid_to_sphere = 1.0 / terrain_data.terrain.scale;
 
     // radius of the culling sphere, to be conservative we use the minimal height scaled by the minor axis
-    let radius = 1.0 + terrain.min_height / terrain.scale.y;
+    let radius = 1.0 + terrain_data.terrain.min_height / terrain_data.terrain.scale.y;
 
     let view_position   = ellipsoid_to_sphere * terrain_view.world_position;
-    let tile_position   = ellipsoid_to_sphere * apply_height(world_coordinate, terrain.max_height);
-    let origin_position = ellipsoid_to_sphere * (affine3_to_square(terrain.world_from_unit) * vec4<f32>(0.0, 0.0, 0.0, 1.0)).xyz;
+    let tile_position   = ellipsoid_to_sphere * apply_height(world_coordinate, terrain_data.terrain.max_height);
+    let origin_position = ellipsoid_to_sphere * (affine3_to_square(terrain_data.terrain.world_from_unit) * vec4<f32>(0.0, 0.0, 0.0, 1.0)).xyz;
     let view_tile       = tile_position - view_position;
     let view_origin     = origin_position - view_position;
 

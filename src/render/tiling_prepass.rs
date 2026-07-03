@@ -5,7 +5,7 @@ use crate::{
         terrain_bind_group::TerrainBindGroup,
         terrain_view_bind_group::{
             IndirectBindGroup, PrepassViewBindGroup, TerrainViewBindGroup,
-            TerrainViewBindGroupDebug,
+            TerrainViewBindGroupDebug, extend_terrain_view_layout,
         },
     },
     shaders::{PREPARE_PREPASS_SHADER, REFINE_TILES_SHADER},
@@ -140,9 +140,11 @@ impl FromWorld for TerrainTilingPrepassPipelines {
         let device = world.resource::<RenderDevice>();
 
         let terrain_layout = TerrainBindGroup::bind_group_layout_descriptor(device);
-        let terrain_view_layout = TerrainViewBindGroup::bind_group_layout_descriptor(device);
-        let terrain_view_layout_debug =
-            TerrainViewBindGroupDebug::bind_group_layout_descriptor(device);
+        let terrain_view_layout =
+            extend_terrain_view_layout(TerrainViewBindGroup::bind_group_layout_descriptor(device));
+        let terrain_view_layout_debug = extend_terrain_view_layout(
+            TerrainViewBindGroupDebug::bind_group_layout_descriptor(device),
+        );
         let indirect_layout = IndirectBindGroup::bind_group_layout_descriptor(device);
         let prepass_view_layout = PrepassViewBindGroup::bind_group_layout_descriptor(device);
 

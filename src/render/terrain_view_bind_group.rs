@@ -1,8 +1,9 @@
 use crate::{
     debug::DebugTerrain,
     math::{TileCoordinate, ViewCoordinate},
-    render::TerrainTilingPrepassPipelines,
+    render::{TerrainTilingPrepassPipelines, terrain_shadow::GpuTerrainShadow},
     terrain_data::{TileTree, TileTreeEntry},
+    terrain_shadow::TerrainShadowUniform,
     terrain_view::TerrainViewComponents,
 };
 use bevy::{
@@ -14,10 +15,11 @@ use bevy::{
     prelude::*,
     render::{
         Extract,
+        render_asset::RenderAssets,
         render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
-        render_resource::*,
+        render_resource::{binding_types::*, *},
         renderer::RenderDevice,
-        storage::ShaderBuffer,
+        storage::{GpuShaderBuffer, ShaderBuffer},
         sync_world::MainEntity,
     },
 };
@@ -69,6 +71,20 @@ pub struct TerrainViewBindGroupDebug {
     pub(crate) tile_tree: Handle<ShaderBuffer>,
     #[storage(3, visibility(vertex, fragment), read_only, buffer)]
     pub(crate) geometry_tiles: Buffer,
+}
+
+/// Appends the terrain shadow map bindings (texture, sampler, params) to the
+/// derived terrain view layout, so the fragment shader can sample the shadow map
+/// under the `TERRAIN_SHADOW` shader def.
+pub(crate) fn extend_terrain_view_layout(
+    mut descriptor: BindGroupLayoutDescriptor,
+) -> BindGroupLayoutDescriptor {
+    descriptor.entries.extend([
+        texture_2d(TextureSampleType::Float { filterable: true }).build(4, ShaderStages::FRAGMENT),
+        sampler(SamplerBindingType::Filtering).build(5, ShaderStages::FRAGMENT),
+        uniform_buffer::<TerrainShadowUniform>(false).build(6, ShaderStages::FRAGMENT),
+    ]);
+    descriptor
 }
 
 #[derive(ShaderType)]
@@ -159,11 +175,11 @@ pub struct GpuTerrainView {
     pub(crate) indirect_bind_group: Option<BindGroup>,
     pub(crate) prepass_view_bind_group: Option<BindGroup>,
     pub(crate) terrain_view_bind_group: Option<BindGroup>,
+    terrain_view_debug_layout: Option<bool>,
 
     indirect: IndirectBindGroup,
     prepass_view: PrepassViewBindGroup,
     terrain_view: TerrainViewBindGroup,
-    terrain_view_debug: TerrainViewBindGroupDebug,
 }
 
 impl GpuTerrainView {
@@ -210,12 +226,6 @@ impl GpuTerrainView {
             terrain_view: tile_tree.terrain_view_buffer.clone(),
             approximate_height: tile_tree.approximate_height_buffer.clone(),
             tile_tree: tile_tree.tile_tree_buffer.clone(),
-            geometry_tiles: tiles.clone(),
-        };
-        let terrain_view_debug = TerrainViewBindGroupDebug {
-            terrain_view: tile_tree.terrain_view_buffer.clone(),
-            approximate_height: tile_tree.approximate_height_buffer.clone(),
-            tile_tree: tile_tree.tile_tree_buffer.clone(),
             geometry_tiles: tiles,
         };
 
@@ -226,10 +236,10 @@ impl GpuTerrainView {
             indirect: prepare_prepass,
             prepass_view: refine_tiles,
             terrain_view,
-            terrain_view_debug,
             indirect_bind_group: None,
             prepass_view_bind_group: None,
             terrain_view_bind_group: None,
+            terrain_view_debug_layout: None,
         }
     }
 
@@ -253,38 +263,60 @@ impl GpuTerrainView {
         prepass_pipeline: Res<TerrainTilingPrepassPipelines>,
         debug: Option<Res<DebugTerrain>>,
         atmosphere_cameras: Query<Has<ExtractedAtmosphere>, With<Camera3d>>,
+        buffers: Res<RenderAssets<GpuShaderBuffer>>,
+        gpu_terrain_shadows: Res<TerrainViewComponents<GpuTerrainShadow>>,
         mut gpu_terrain_views: ResMut<TerrainViewComponents<GpuTerrainView>>,
-        mut param: StaticSystemParam<<TerrainViewBindGroup as AsBindGroup>::Param>,
     ) {
         let show_tile_tree = debug.is_some_and(|debug| debug.show_tile_tree);
         let atmosphere_active = atmosphere_cameras.iter().any(|has| has);
         let use_debug_layout = show_tile_tree && !atmosphere_active;
 
-        for gpu_terrain_view in &mut gpu_terrain_views.values_mut() {
-            let bind_group = if use_debug_layout {
-                gpu_terrain_view
-                    .terrain_view_debug
-                    .as_bind_group(
-                        &prepass_pipeline.terrain_view_layout_debug,
-                        &device,
-                        &pipeline_cache,
-                        &mut param,
-                    )
-                    .ok()
-                    .map(|b| b.bind_group)
-            } else {
-                gpu_terrain_view
-                    .terrain_view
-                    .as_bind_group(
-                        &prepass_pipeline.terrain_view_layout,
-                        &device,
-                        &pipeline_cache,
-                        &mut param,
-                    )
-                    .ok()
-                    .map(|b| b.bind_group)
+        for (&(terrain, view), gpu_terrain_view) in gpu_terrain_views.iter_mut() {
+            let terrain_view = &gpu_terrain_view.terrain_view;
+
+            let (
+                Some(terrain_view_buffer),
+                Some(approximate_height_buffer),
+                Some(tile_tree_buffer),
+                Some(gpu_terrain_shadow),
+            ) = (
+                buffers.get(&terrain_view.terrain_view),
+                buffers.get(&terrain_view.approximate_height),
+                buffers.get(&terrain_view.tile_tree),
+                gpu_terrain_shadows.get(&(terrain, view)),
+            )
+            else {
+                gpu_terrain_view.terrain_view_bind_group = None;
+                gpu_terrain_view.terrain_view_debug_layout = None;
+                continue;
             };
-            gpu_terrain_view.terrain_view_bind_group = bind_group;
+
+            if gpu_terrain_view.terrain_view_bind_group.is_some()
+                && gpu_terrain_view.terrain_view_debug_layout == Some(use_debug_layout)
+            {
+                continue;
+            }
+
+            let layout = if use_debug_layout {
+                &prepass_pipeline.terrain_view_layout_debug
+            } else {
+                &prepass_pipeline.terrain_view_layout
+            };
+
+            gpu_terrain_view.terrain_view_bind_group = Some(device.create_bind_group(
+                "terrain_view_bind_group",
+                &pipeline_cache.get_bind_group_layout(layout),
+                &BindGroupEntries::sequential((
+                    terrain_view_buffer.buffer.as_entire_binding(),
+                    approximate_height_buffer.buffer.as_entire_binding(),
+                    tile_tree_buffer.buffer.as_entire_binding(),
+                    terrain_view.geometry_tiles.as_entire_binding(),
+                    &gpu_terrain_shadow.texture_view,
+                    &gpu_terrain_shadow.sampler,
+                    &gpu_terrain_shadow.params_buffer,
+                )),
+            ));
+            gpu_terrain_view.terrain_view_debug_layout = Some(use_debug_layout);
         }
     }
 

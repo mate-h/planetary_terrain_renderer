@@ -55,6 +55,7 @@ pub mod shaders;
 pub mod spawn;
 pub mod terrain;
 pub mod terrain_data;
+pub mod terrain_shadow;
 pub mod terrain_view;
 pub mod util;
 
@@ -80,6 +81,7 @@ pub mod prelude {
         terrain_data::{
             AttachmentConfig, AttachmentFormat, AttachmentLabel, GpuTileAtlas, TileAtlas, TileTree,
         },
+        terrain_shadow::TerrainShadowSettings,
         terrain_view::{TerrainViewComponents, TerrainViewConfig},
     };
     pub use big_space::{

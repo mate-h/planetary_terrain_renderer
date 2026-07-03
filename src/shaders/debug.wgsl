@@ -2,10 +2,10 @@
 
 #import bevy_terrain::types::{Coordinate, WorldCoordinate, TileCoordinate, AtlasTile, Blend}
 #ifdef ATMOSPHERE
-#import bevy_terrain::bindings::{terrain, terrain_view, geometry_tiles, attachments, origins}
+#import bevy_terrain::bindings::{terrain_data, terrain_view, geometry_tiles, origins}
 #import bevy_terrain::functions::{compute_subdivision_coordinate}
 #else
-#import bevy_terrain::bindings::{terrain, tile_tree, terrain_view, geometry_tiles, attachments, origins}
+#import bevy_terrain::bindings::{terrain_data, tile_tree, terrain_view, geometry_tiles, origins}
 #import bevy_terrain::functions::{lookup_best, compute_subdivision_coordinate}
 #endif
 #import bevy_pbr::mesh_view_bindings::view
@@ -129,7 +129,7 @@ fn show_tile_tree(coordinate: Coordinate, world_coordinate: WorldCoordinate) -> 
 
 fn show_pixels(tile: AtlasTile) -> vec4<f32> {
     let pixel_size = 1.0;
-    let pixel_coordinate = tile.coordinate.uv * f32(attachments.height.center_size) / pixel_size;
+    let pixel_coordinate = tile.coordinate.uv * f32(terrain_data.attachments.height.center_size) / pixel_size;
 
     let is_even = (u32(pixel_coordinate.x) + u32(pixel_coordinate.y)) % 2u == 0u;
 
