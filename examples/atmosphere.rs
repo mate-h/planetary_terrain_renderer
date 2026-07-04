@@ -18,7 +18,7 @@ use bevy::{
     post_process::bloom::Bloom,
     prelude::*,
     reflect::TypePath,
-    render::render_resource::AsBindGroup,
+    render::render_resource::{AsBindGroup, ShaderType},
     shader::ShaderRef,
     window::{DisplayTarget, PrimaryWindow},
 };
@@ -113,8 +113,17 @@ struct AtmospherePresets {
     mars: Handle<ScatteringMedium>,
 }
 
+#[derive(Clone, Copy, Default, ShaderType)]
+struct CaliforniaMaterialSettings {
+    show_landcover: u32,
+    show_albedo: u32,
+}
+
 #[derive(Asset, AsBindGroup, TypePath, Clone, Default)]
-struct CaliforniaMaterial {}
+struct CaliforniaMaterial {
+    #[uniform(0)]
+    settings: CaliforniaMaterialSettings,
+}
 
 impl Material for CaliforniaMaterial {
     fn fragment_shader() -> ShaderRef {
@@ -131,7 +140,7 @@ fn main() {
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(GameState::default())
         .insert_resource(GlobalAmbientLight::NONE)
-        .insert_resource(TerrainSettings::default())
+        .insert_resource(TerrainSettings::new(vec!["landcover", "albedo"]))
         .insert_resource(TerrainShadowSettings {
             enabled: true,
             ..default()
@@ -152,7 +161,7 @@ fn main() {
         ))
         .add_plugins(hdr::HdrPlugin::default())
         .add_systems(Startup, (setup_hdr_display, setup_scene, print_controls))
-        .add_systems(Update, (dynamic_scene, atmosphere_controls))
+        .add_systems(Update, (dynamic_scene, atmosphere_controls, terrain_overlay_controls))
         .run();
 }
 
@@ -164,6 +173,8 @@ fn print_controls() {
     println!("    4          - Switch to Mars atmosphere");
     println!("    Enter      - Pause/Resume sun motion");
     println!("    T          - Toggle terrain shadows on/off");
+    println!("    L          - Toggle WorldCover landcover overlay on/off");
+    println!("    I          - Toggle satellite albedo overlay on/off");
     println!("    H          - Toggle HDR display output on/off");
     println!("    Up/Down    - Increase/Decrease exposure");
     println!("    WASD       - Move camera (FreeCamera)");
@@ -368,6 +379,49 @@ fn setup_scene(
         CaliforniaMaterial::default(),
         view,
     );
+}
+
+fn terrain_overlay_controls(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut materials: ResMut<Assets<CaliforniaMaterial>>,
+    terrain_materials: Query<&MeshMaterial3d<CaliforniaMaterial>, With<TileAtlas>>,
+) {
+    let toggle_landcover = keyboard_input.just_pressed(KeyCode::KeyL);
+    let toggle_albedo = keyboard_input.just_pressed(KeyCode::KeyI);
+
+    if !toggle_landcover && !toggle_albedo {
+        return;
+    }
+
+    for terrain_material in &terrain_materials {
+        let Some(mut material) = materials.get_mut(terrain_material.id()) else {
+            continue;
+        };
+
+        if toggle_landcover {
+            material.settings.show_landcover = 1 - material.settings.show_landcover;
+            println!(
+                "WorldCover landcover overlay: {}",
+                if material.settings.show_landcover != 0 {
+                    "on"
+                } else {
+                    "off"
+                }
+            );
+        }
+
+        if toggle_albedo {
+            material.settings.show_albedo = 1 - material.settings.show_albedo;
+            println!(
+                "Satellite albedo overlay: {}",
+                if material.settings.show_albedo != 0 {
+                    "on"
+                } else {
+                    "off"
+                }
+            );
+        }
+    }
 }
 
 fn dynamic_scene(

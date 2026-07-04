@@ -1,5 +1,5 @@
 use crate::{
-    dataset::PreprocessContext,
+    dataset::{PreprocessContext, PreprocessResampleAlg},
     result::{PreprocessError, PreprocessResult},
 };
 use gag::Gag;
@@ -89,8 +89,10 @@ pub fn warp(
     let options = unsafe { &mut *GDALCreateWarpOptions() };
     options.hSrcDS = src.c_dataset();
     options.hDstDS = dst.c_dataset();
-    // options.eResampleAlg = GDALResampleAlg::GRA_NearestNeighbour;
-    options.eResampleAlg = GDALResampleAlg::GRA_Bilinear;
+    options.eResampleAlg = match context.resample_alg {
+        PreprocessResampleAlg::Bilinear => GDALResampleAlg::GRA_Bilinear,
+        PreprocessResampleAlg::Nearest => GDALResampleAlg::GRA_NearestNeighbour,
+    };
     options.dfWarpMemoryLimit = 1024f64.powi(2) * 8.0; // Todo: figure out, why this affects reprojection at the poles
 
     // for some reason this is not automatically recognized, so we have to set it manually

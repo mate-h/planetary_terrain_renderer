@@ -10,6 +10,8 @@ pub enum PreprocessError {
     TransformOperationFailed,
     #[error("The no data value is outside of the datatypes range.")]
     NoDataOutOfRange,
+    #[error("invalid resample algorithm: {0}")]
+    InvalidResampleAlg(String),
     #[error("GDAL error")]
     Gdal(#[from] GdalError),
     #[error("Parse error")]

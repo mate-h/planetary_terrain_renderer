@@ -1,18 +1,18 @@
-//! California terrain — preprocessed from `source_data/california*.tif`.
+//! British Columbia terrain — preprocessed from `source_data/bc_*.tif`.
 //!
 //! Run:
-//! `cargo run --release -p bevy_terrain_preprocess --example preprocess_california`
+//! `cargo run --release -p bevy_terrain_preprocess --example preprocess_bc`
 
 use bevy_terrain::prelude::*;
 use bevy_terrain_preprocess::prelude::*;
 use gdal::raster::GdalDataType;
 use std::path::Path;
 
-const TERRAIN_PATH: &str = "assets/terrains/california";
+const TERRAIN_PATH: &str = "assets/terrains/bc";
 
 fn main() {
     let args = Cli {
-        src_path: vec!["source_data/california.tif".into()],
+        src_path: vec!["source_data/bc_height.tif".into()],
         terrain_path: TERRAIN_PATH.into(),
         temp_path: None,
         overwrite: true,
@@ -37,7 +37,7 @@ fn main() {
         .lod_count;
 
     let args = Cli {
-        src_path: vec!["source_data/california_satellite_nad83.tif".into()],
+        src_path: vec!["source_data/bc_color.tif".into()],
         terrain_path: TERRAIN_PATH.into(),
         temp_path: None,
         overwrite: true,
@@ -50,7 +50,7 @@ fn main() {
         texture_size: 512,
         border_size: 1,
         mip_level_count: 1,
-        format: AttachmentFormat::Rgba8U,
+        format: AttachmentFormat::Rgb8U,
         resample_alg: PreprocessResampleAlg::Bilinear,
     };
 
@@ -58,7 +58,7 @@ fn main() {
     preprocess(src_dataset, &mut context);
 
     let args = Cli {
-        src_path: vec!["source_data/california_worldcover_nad83.tif".into()],
+        src_path: vec!["source_data/bc_normal.tif".into()],
         terrain_path: TERRAIN_PATH.into(),
         temp_path: None,
         overwrite: true,
@@ -67,12 +67,12 @@ fn main() {
         fill_radius: 0.0,
         create_mask: false,
         lod_count: Some(lod_count),
-        attachment_label: AttachmentLabel::Custom("landcover".to_string()),
+        attachment_label: AttachmentLabel::Custom("normal".to_string()),
         texture_size: 512,
         border_size: 1,
         mip_level_count: 1,
-        format: AttachmentFormat::Rgba8U,
-        resample_alg: PreprocessResampleAlg::Nearest,
+        format: AttachmentFormat::Rgb8U,
+        resample_alg: PreprocessResampleAlg::Bilinear,
     };
 
     let (src_dataset, mut context) = PreprocessContext::from_cli(args).unwrap();

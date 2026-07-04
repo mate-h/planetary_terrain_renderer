@@ -1,5 +1,5 @@
 use crate::{
-    dataset::{PreprocessDataType, PreprocessNoData},
+    dataset::{PreprocessDataType, PreprocessNoData, PreprocessResampleAlg},
     gdal_extension::ProgressCallback,
 };
 use bevy_terrain::prelude::*;
@@ -44,6 +44,8 @@ pub struct Cli {
     pub mip_level_count: u32,
     #[arg(long, default_value = "r16u")]
     pub format: AttachmentFormat,
+    #[arg(long, default_value = "bilinear")]
+    pub resample_alg: PreprocessResampleAlg,
 }
 
 pub(crate) struct PreprocessBar<'a> {

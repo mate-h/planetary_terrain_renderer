@@ -115,6 +115,10 @@ fn main() {
         .insert_resource(GameState::default())
         .insert_resource(GlobalAmbientLight::NONE)
         .insert_resource(TerrainSettings::default())
+        .insert_resource(TerrainShadowSettings {
+            enabled: true,
+            ..default()
+        })
         .add_plugins((
             DefaultPlugins
                 .set(WindowPlugin {
@@ -148,6 +152,7 @@ fn main() {
 fn print_controls() {
     println!("Mount Baker Controls:");
     println!("    Enter      - Pause/Resume sun motion");
+    println!("    T          - Toggle terrain shadows on/off");
     println!("    H          - Toggle HDR display output on/off");
     println!("    Up/Down    - Increase/Decrease exposure");
     println!("    WASD       - Move camera (FreeCamera)");
@@ -171,6 +176,7 @@ fn setup_hdr_display(
 fn scene_controls(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut game_state: ResMut<GameState>,
+    mut terrain_shadows: ResMut<TerrainShadowSettings>,
     mut camera_exposure: Query<&mut Exposure, With<Camera3d>>,
     mut display_target: Single<&mut DisplayTarget, With<PrimaryWindow>>,
     mut hdr_preference: ResMut<hdr::HdrPreference>,
@@ -178,6 +184,14 @@ fn scene_controls(
 ) {
     if keyboard_input.just_pressed(KeyCode::Enter) {
         game_state.paused = !game_state.paused;
+    }
+
+    if keyboard_input.just_pressed(KeyCode::KeyT) {
+        terrain_shadows.enabled = !terrain_shadows.enabled;
+        println!(
+            "Terrain shadows: {}",
+            if terrain_shadows.enabled { "on" } else { "off" }
+        );
     }
 
     if keyboard_input.just_pressed(KeyCode::KeyH) {

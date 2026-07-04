@@ -41,6 +41,24 @@ impl FromStr for PreprocessNoData {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub enum PreprocessResampleAlg {
+    #[default]
+    Bilinear,
+    Nearest,
+}
+
+impl FromStr for PreprocessResampleAlg {
+    type Err = PreprocessError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "bilinear" | "linear" => Ok(PreprocessResampleAlg::Bilinear),
+            "nearest" | "near" => Ok(PreprocessResampleAlg::Nearest),
+            other => Err(PreprocessError::InvalidResampleAlg(other.to_string())),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum PreprocessDataType {
     Source,
@@ -83,6 +101,7 @@ pub struct PreprocessContext {
     pub(crate) lod_count: Option<u32>,
     pub(crate) attachment_label: AttachmentLabel,
     pub(crate) attachment: AttachmentConfig,
+    pub(crate) resample_alg: PreprocessResampleAlg,
 }
 
 impl PreprocessContext {
@@ -102,6 +121,7 @@ impl PreprocessContext {
             border_size,
             mip_level_count,
             format,
+            resample_alg,
         } = args;
 
         PreprocessContext::initialize(
@@ -122,6 +142,7 @@ impl PreprocessContext {
             fill_radius,
             create_mask,
             overwrite,
+            resample_alg,
         )
     }
 
@@ -140,6 +161,7 @@ impl PreprocessContext {
         fill_radius: f32,
         create_mask: bool,
         overwrite: bool,
+        resample_alg: PreprocessResampleAlg,
     ) -> PreprocessResult<(Dataset, Self)> {
         let mut src_datasets: Vec<Dataset> = src_path
             .iter()
@@ -228,6 +250,7 @@ impl PreprocessContext {
                 attachment,
                 terrain_path,
                 lod_count,
+                resample_alg,
             },
         ))
     }

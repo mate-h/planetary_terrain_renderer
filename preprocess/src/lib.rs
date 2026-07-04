@@ -28,7 +28,7 @@ use std::time::Instant;
 pub mod prelude {
     pub use crate::{
         cli::Cli,
-        dataset::{PreprocessContext, PreprocessDataType, PreprocessNoData},
+        dataset::{PreprocessContext, PreprocessDataType, PreprocessNoData, PreprocessResampleAlg},
         preprocess,
     };
 }
