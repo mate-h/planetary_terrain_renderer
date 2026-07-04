@@ -57,6 +57,11 @@ path = "examples/atmosphere.rs"
 required-features = ["atmosphere_example"]
 
 [[example]]
+name = "bc_atmosphere"
+path = "examples/bc_atmosphere.rs"
+required-features = ["atmosphere_example"]
+
+[[example]]
 name = "precision_demo"
 path = "examples/precision_demo.rs"
 required-features = ["rand"]

@@ -1,11 +1,14 @@
 use bevy_terrain::prelude::*;
 use bevy_terrain_preprocess::prelude::*;
 use gdal::raster::GdalDataType;
+use std::path::Path;
+
+const TERRAIN_PATH: &str = "assets/terrains/earth";
 
 fn main() {
     let args = Cli {
         src_path: vec!["source_data/gebco_earth.tif".into()],
-        terrain_path: "assets/terrains/earth".into(),
+        terrain_path: TERRAIN_PATH.into(),
         temp_path: None,
         overwrite: true,
         no_data: PreprocessNoData::Source,
@@ -18,30 +21,36 @@ fn main() {
         border_size: 4,
         mip_level_count: 4,
         format: AttachmentFormat::R32F,
+        resample_alg: PreprocessResampleAlg::Bilinear,
+        sparse: false,
     };
 
     let (src_dataset, mut context) = PreprocessContext::from_cli(args).unwrap();
-
     preprocess(src_dataset, &mut context);
+
+    let lod_count = TerrainConfig::load_file(Path::new(TERRAIN_PATH).join("config.tc.ron"))
+        .unwrap()
+        .lod_count;
 
     let args = Cli {
         src_path: vec!["source_data/true_marble.tif".into()],
-        terrain_path: "assets/terrains/earth".into(),
+        terrain_path: TERRAIN_PATH.into(),
         temp_path: None,
         overwrite: true,
         no_data: PreprocessNoData::NoData(0.0),
         data_type: PreprocessDataType::DataType(GdalDataType::UInt8),
         fill_radius: 0.0,
         create_mask: false,
-        lod_count: Some(4),
+        lod_count: Some(lod_count),
         attachment_label: AttachmentLabel::Custom("albedo".to_string()),
         texture_size: 512,
         border_size: 2,
         mip_level_count: 4,
         format: AttachmentFormat::Rgb8U,
+        resample_alg: PreprocessResampleAlg::Bilinear,
+        sparse: false,
     };
 
     let (src_dataset, mut context) = PreprocessContext::from_cli(args).unwrap();
-
     preprocess(src_dataset, &mut context);
 }

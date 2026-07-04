@@ -102,6 +102,9 @@ pub struct PreprocessContext {
     pub(crate) attachment_label: AttachmentLabel,
     pub(crate) attachment: AttachmentConfig,
     pub(crate) resample_alg: PreprocessResampleAlg,
+    pub(crate) sparse: bool,
+    pub(crate) tile_manifest: Option<Vec<TileCoordinate>>,
+    pub(crate) src_path: PathBuf,
 }
 
 impl PreprocessContext {
@@ -122,6 +125,7 @@ impl PreprocessContext {
             mip_level_count,
             format,
             resample_alg,
+            sparse,
         } = args;
 
         PreprocessContext::initialize(
@@ -143,6 +147,8 @@ impl PreprocessContext {
             create_mask,
             overwrite,
             resample_alg,
+            sparse,
+            None,
         )
     }
 
@@ -162,6 +168,8 @@ impl PreprocessContext {
         create_mask: bool,
         overwrite: bool,
         resample_alg: PreprocessResampleAlg,
+        sparse: bool,
+        tile_manifest: Option<Vec<TileCoordinate>>,
     ) -> PreprocessResult<(Dataset, Self)> {
         let mut src_datasets: Vec<Dataset> = src_path
             .iter()
@@ -232,6 +240,8 @@ impl PreprocessContext {
             Some(path) => path,
         };
 
+        let src_path = src_path.into_iter().next().unwrap_or_default();
+
         Ok((
             src_dataset,
             Self {
@@ -251,6 +261,9 @@ impl PreprocessContext {
                 terrain_path,
                 lod_count,
                 resample_alg,
+                sparse,
+                tile_manifest,
+                src_path,
             },
         ))
     }

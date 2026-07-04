@@ -27,6 +27,7 @@ fn main() {
         mip_level_count: 1,
         format: AttachmentFormat::R32F,
         resample_alg: PreprocessResampleAlg::Bilinear,
+        sparse: false,
     };
 
     let (src_dataset, mut context) = PreprocessContext::from_cli(args).unwrap();
@@ -52,6 +53,7 @@ fn main() {
         mip_level_count: 1,
         format: AttachmentFormat::Rgba8U,
         resample_alg: PreprocessResampleAlg::Bilinear,
+        sparse: false,
     };
 
     let (src_dataset, mut context) = PreprocessContext::from_cli(args).unwrap();
@@ -73,6 +75,7 @@ fn main() {
         mip_level_count: 1,
         format: AttachmentFormat::Rgba8U,
         resample_alg: PreprocessResampleAlg::Nearest,
+        sparse: false,
     };
 
     let (src_dataset, mut context) = PreprocessContext::from_cli(args).unwrap();

@@ -79,7 +79,7 @@ pub fn reproject<T: Copy + GdalType>(
     Ok(faces)
 }
 
-pub fn compute_transforms<'a>(
+pub(crate) fn compute_transforms<'a>(
     src_dataset: &Dataset,
     context: &mut PreprocessContext,
     progress_callback: Option<&'a ProgressCallback>,

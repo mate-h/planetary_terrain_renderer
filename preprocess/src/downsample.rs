@@ -1,5 +1,7 @@
 use crate::{
-    dataset::{PreprocessContext, PreprocessResampleAlg, create_tile_dataset, load_tile_dataset_if_exists},
+    dataset::{
+        PreprocessContext, PreprocessResampleAlg, create_tile_dataset, load_tile_dataset_if_exists,
+    },
     gdal_extension::{CountingProgressCallback, ProgressCallback},
     result::{PreprocessError, PreprocessResult},
     stitch::stitch,

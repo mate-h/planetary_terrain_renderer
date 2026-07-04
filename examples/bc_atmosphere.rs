@@ -1,7 +1,10 @@
-//! Atmosphere example with California terrain, based on `bevy/examples/3d/atmosphere.rs`.
+//! Atmosphere example with British Columbia terrain.
 //!
-//! Run from this crate root:
-//! `cargo run --example atmosphere --features atmosphere_example`
+//! Preprocess first:
+//! `cargo run --release -p bevy_terrain_preprocess --example preprocess_bc`
+//!
+//! Run:
+//! `cargo run --release --example bc_atmosphere --features atmosphere_example`
 
 use bevy::{
     asset::io::AssetSourceBuilder,
@@ -13,7 +16,7 @@ use bevy::{
         Atmosphere, AtmosphereEnvironmentMapLight, SunDisk, VolumetricLight,
         atmosphere::ScatteringMedium, light_consts::lux,
     },
-    math::{DVec2, DVec3},
+    math::DVec3,
     pbr::{AtmosphereMode, AtmosphereSettings},
     post_process::bloom::Bloom,
     prelude::*,
@@ -32,29 +35,24 @@ mod hdr;
 const EARTH_MINOR_RADIUS: f32 = 6356752.314245;
 const EARTH_ATMOSPHERE_SHELL: f32 = 100_000.0;
 
-/// Lowest elevation in `source_data/california.tif` (near Death Valley).
-const CALIFORNIA_MIN_HEIGHT: f32 = -8.381_328_6;
-const CALIFORNIA_MIN_LAT: f64 = 36.637_500;
-const CALIFORNIA_MIN_LON: f64 = -117.159_259;
-/// Highest elevation in the preprocessed california height tiles.
-const CALIFORNIA_MAX_HEIGHT: f32 = 4416.048_340;
+/// Geographic center of `source_data/bc_height.tif` (from gdalinfo).
+const BC_CENTER_LAT: f64 = 50.505_253;
+const BC_CENTER_LON: f64 = -122.272_600;
+/// Elevation range from `assets/terrains/bc/config.tc.ron`.
+const BC_MIN_HEIGHT: f32 = 65.059_395;
+const BC_MAX_HEIGHT: f32 = 2848.676;
+const BC_MEAN_HEIGHT: f32 = (BC_MIN_HEIGHT + BC_MAX_HEIGHT) * 0.5;
+/// Highest lod in the preprocessed tile set.
+const BC_LOD: u32 = 14;
+/// Stay within the lod-14 load radius so tiles stream in.
+const BC_CAMERA_ALTITUDE: f64 = 10_000.0;
 
-/// California tiles in `config.tc.ron` live on cube face 4 (−Z normal) at lod 11.
-const CALIFORNIA_FACE: u32 = 4;
-const CALIFORNIA_LOD: u32 = 11;
-const CALIFORNIA_TILE_XY: IVec2 = IVec2::new(91, 1695);
-const CALIFORNIA_MEAN_HEIGHT: f32 = (CALIFORNIA_MIN_HEIGHT + CALIFORNIA_MAX_HEIGHT) * 0.5;
-/// Lod-11 load radius is ~29 km; stay within that so tiles stream in.
-const CALIFORNIA_CAMERA_ALTITUDE: f64 = 15_000.0;
-
-/// Matches the lon/lat convention in `preprocess/src/transformers.rs`.
 fn lat_lon_to_unit_position(lat_deg: f64, lon_deg: f64) -> DVec3 {
     let lat = lat_deg.to_radians();
     let lon = lon_deg.to_radians();
     DVec3::new(-lat.cos() * lon.cos(), lat.sin(), lat.cos() * lon.sin())
 }
 
-/// Geocentric distance from the planet center at a surface point with elevation `height`.
 fn geocentric_radius_at_elevation(
     shape: TerrainShape,
     lat_deg: f64,
@@ -66,35 +64,33 @@ fn geocentric_radius_at_elevation(
     coordinate.local_position(shape, height).length() as f32
 }
 
-fn california_atmosphere_radii() -> (f32, f32) {
+fn bc_atmosphere_radii() -> (f32, f32) {
     let inner_radius = geocentric_radius_at_elevation(
         TerrainShape::WGS84,
-        CALIFORNIA_MIN_LAT,
-        CALIFORNIA_MIN_LON,
-        CALIFORNIA_MIN_HEIGHT,
+        BC_CENTER_LAT,
+        BC_CENTER_LON,
+        BC_MIN_HEIGHT,
     );
     (inner_radius, inner_radius + EARTH_ATMOSPHERE_SHELL)
 }
 
-fn california_coordinate() -> Coordinate {
-    let tile_count = 2f64.powi(CALIFORNIA_LOD as i32);
-    let uv = (CALIFORNIA_TILE_XY.as_dvec2() + DVec2::splat(0.5)) / tile_count;
-    Coordinate::new(CALIFORNIA_FACE, uv)
+fn bc_coordinate() -> Coordinate {
+    let unit = lat_lon_to_unit_position(BC_CENTER_LAT, BC_CENTER_LON);
+    Coordinate::from_unit_position(unit, true)
 }
 
-fn california_surface_normal() -> Dir3 {
-    let unit = california_coordinate().unit_position(true);
+fn bc_surface_normal() -> Dir3 {
+    let unit = bc_coordinate().unit_position(true);
     Dir3::new_unchecked((TerrainShape::WGS84.scale() * unit).normalize().as_vec3())
 }
 
-fn california_surface_point() -> DVec3 {
-    california_coordinate().local_position(TerrainShape::WGS84, CALIFORNIA_MEAN_HEIGHT)
+fn bc_surface_point() -> DVec3 {
+    bc_coordinate().local_position(TerrainShape::WGS84, BC_MEAN_HEIGHT)
 }
 
 #[derive(Resource)]
 struct GameState {
     paused: bool,
-    /// When `true`, `HdrPlugin` auto-selects the best HDR transfer; when `false`, output is pinned to SDR.
     hdr_output_enabled: bool,
 }
 
@@ -113,21 +109,30 @@ struct AtmospherePresets {
     mars: Handle<ScatteringMedium>,
 }
 
-#[derive(Clone, Copy, Default, ShaderType)]
-struct CaliforniaMaterialSettings {
-    show_landcover: u32,
+#[derive(Clone, Copy, ShaderType)]
+struct BcMaterialSettings {
     show_albedo: u32,
+    show_normal: u32,
+}
+
+impl Default for BcMaterialSettings {
+    fn default() -> Self {
+        Self {
+            show_albedo: 1,
+            show_normal: 0,
+        }
+    }
 }
 
 #[derive(Asset, AsBindGroup, TypePath, Clone, Default)]
-struct CaliforniaMaterial {
+struct BcMaterial {
     #[uniform(0)]
-    settings: CaliforniaMaterialSettings,
+    settings: BcMaterialSettings,
 }
 
-impl Material for CaliforniaMaterial {
+impl Material for BcMaterial {
     fn fragment_shader() -> ShaderRef {
-        "shaders/atmosphere.wgsl".into()
+        "shaders/bc_atmosphere.wgsl".into()
     }
 }
 
@@ -140,7 +145,7 @@ fn main() {
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(GameState::default())
         .insert_resource(GlobalAmbientLight::NONE)
-        .insert_resource(TerrainSettings::new(vec!["landcover", "albedo"]))
+        .insert_resource(TerrainSettings::new(vec!["albedo", "normal"]))
         .insert_resource(TerrainShadowSettings {
             enabled: true,
             ..default()
@@ -149,7 +154,6 @@ fn main() {
             DefaultPlugins
                 .build()
                 .set(bevy::render::RenderPlugin {
-                    // Rec.2020 is GT7's native working space; pairs with HDR output on XDR displays.
                     working_color_space:
                         bevy::render::working_color_space::WorkingColorSpace::Rec2020,
                     ..default()
@@ -157,7 +161,7 @@ fn main() {
                 .disable::<TransformPlugin>(),
             FreeCameraPlugin,
             TerrainPlugin,
-            TerrainMaterialPlugin::<CaliforniaMaterial>::default(),
+            TerrainMaterialPlugin::<BcMaterial>::default(),
         ))
         .add_plugins(hdr::HdrPlugin::default())
         .add_systems(Startup, (setup_hdr_display, setup_scene, print_controls))
@@ -169,15 +173,15 @@ fn main() {
 }
 
 fn print_controls() {
-    println!("Atmosphere + California Terrain Controls:");
+    println!("Atmosphere + BC Terrain Controls:");
     println!("    1          - Switch to lookup texture rendering method");
     println!("    2          - Switch to raymarched rendering method");
     println!("    3          - Switch to Earth atmosphere");
     println!("    4          - Switch to Mars atmosphere");
     println!("    Enter      - Pause/Resume sun motion");
     println!("    T          - Toggle terrain shadows on/off");
-    println!("    L          - Toggle WorldCover landcover overlay on/off");
-    println!("    I          - Toggle satellite albedo overlay on/off");
+    println!("    I          - Toggle color albedo overlay on/off");
+    println!("    N          - Toggle normal map overlay on/off");
     println!("    H          - Toggle HDR display output on/off");
     println!("    Up/Down    - Increase/Decrease exposure");
     println!("    WASD       - Move camera (FreeCamera)");
@@ -212,7 +216,7 @@ fn atmosphere_controls(
     time: Res<Time>,
 ) {
     if keyboard_input.just_pressed(KeyCode::Digit3) {
-        let (inner_radius, outer_radius) = california_atmosphere_radii();
+        let (inner_radius, outer_radius) = bc_atmosphere_radii();
         for (mut atmosphere, mut transform) in &mut planet_atmosphere {
             *atmosphere = Atmosphere::earth(atmosphere_presets.earth.clone());
             atmosphere.inner_radius = inner_radius;
@@ -304,13 +308,12 @@ fn setup_scene(
     });
 
     let mut atmosphere = Atmosphere::earth(earth_medium);
-    let (inner_radius, outer_radius) = california_atmosphere_radii();
+    let (inner_radius, outer_radius) = bc_atmosphere_radii();
     atmosphere.inner_radius = inner_radius;
     atmosphere.outer_radius = outer_radius;
     println!(
-        "California terrain bounds from source_data/california.tif: \
-         min={CALIFORNIA_MIN_HEIGHT:.3} m at ({CALIFORNIA_MIN_LAT:.6}°, {CALIFORNIA_MIN_LON:.6}°), \
-         max={CALIFORNIA_MAX_HEIGHT:.3} m"
+        "BC terrain bounds from config.tc.ron: \
+         {BC_MIN_HEIGHT:.1}–{BC_MAX_HEIGHT:.1} m at ({BC_CENTER_LAT:.4}°, {BC_CENTER_LON:.4}°)"
     );
     println!(
         "Atmosphere inner radius at lowest terrain point: {inner_radius:.3} m \
@@ -339,9 +342,9 @@ fn setup_scene(
             atmosphere,
         ));
 
-        let surface = california_surface_point();
-        let up = california_surface_normal();
-        let camera_position = surface + up.as_vec3().as_dvec3() * CALIFORNIA_CAMERA_ALTITUDE;
+        let surface = bc_surface_point();
+        let up = bc_surface_normal();
+        let camera_position = surface + up.as_vec3().as_dvec3() * BC_CAMERA_ALTITUDE;
         let look_dir = (surface.as_vec3() - camera_position.as_vec3()).normalize();
         let grid = Grid::default();
         let (cell, local_translation) =
@@ -374,25 +377,25 @@ fn setup_scene(
     });
 
     commands.spawn_terrain(
-        asset_server.load("terrains/california/config.tc.ron"),
+        asset_server.load("terrains/bc/config.tc.ron"),
         TerrainViewConfig {
-            view_lod: CALIFORNIA_LOD,
+            view_lod: BC_LOD,
             ..default()
         },
-        CaliforniaMaterial::default(),
+        BcMaterial::default(),
         view,
     );
 }
 
 fn terrain_overlay_controls(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut materials: ResMut<Assets<CaliforniaMaterial>>,
-    terrain_materials: Query<&MeshMaterial3d<CaliforniaMaterial>, With<TileAtlas>>,
+    mut materials: ResMut<Assets<BcMaterial>>,
+    terrain_materials: Query<&MeshMaterial3d<BcMaterial>, With<TileAtlas>>,
 ) {
-    let toggle_landcover = keyboard_input.just_pressed(KeyCode::KeyL);
     let toggle_albedo = keyboard_input.just_pressed(KeyCode::KeyI);
+    let toggle_normal = keyboard_input.just_pressed(KeyCode::KeyN);
 
-    if !toggle_landcover && !toggle_albedo {
+    if !toggle_albedo && !toggle_normal {
         return;
     }
 
@@ -401,11 +404,14 @@ fn terrain_overlay_controls(
             continue;
         };
 
-        if toggle_landcover {
-            material.settings.show_landcover = 1 - material.settings.show_landcover;
+        if toggle_albedo {
+            material.settings.show_albedo = 1 - material.settings.show_albedo;
+            if material.settings.show_albedo != 0 {
+                material.settings.show_normal = 0;
+            }
             println!(
-                "WorldCover landcover overlay: {}",
-                if material.settings.show_landcover != 0 {
+                "Color albedo overlay: {}",
+                if material.settings.show_albedo != 0 {
                     "on"
                 } else {
                     "off"
@@ -413,11 +419,14 @@ fn terrain_overlay_controls(
             );
         }
 
-        if toggle_albedo {
-            material.settings.show_albedo = 1 - material.settings.show_albedo;
+        if toggle_normal {
+            material.settings.show_normal = 1 - material.settings.show_normal;
+            if material.settings.show_normal != 0 {
+                material.settings.show_albedo = 0;
+            }
             println!(
-                "Satellite albedo overlay: {}",
-                if material.settings.show_albedo != 0 {
+                "Normal map overlay: {}",
+                if material.settings.show_normal != 0 {
                     "on"
                 } else {
                     "off"

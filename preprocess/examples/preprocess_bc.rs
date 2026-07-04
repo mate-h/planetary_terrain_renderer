@@ -18,7 +18,7 @@ fn main() {
         overwrite: true,
         no_data: PreprocessNoData::Source,
         data_type: PreprocessDataType::DataType(GdalDataType::Float32),
-        fill_radius: 32.0,
+        fill_radius: 0.0,
         create_mask: true,
         lod_count: None,
         attachment_label: AttachmentLabel::Height,
@@ -27,6 +27,7 @@ fn main() {
         mip_level_count: 1,
         format: AttachmentFormat::R32F,
         resample_alg: PreprocessResampleAlg::Bilinear,
+        sparse: true,
     };
 
     let (src_dataset, mut context) = PreprocessContext::from_cli(args).unwrap();
@@ -52,6 +53,7 @@ fn main() {
         mip_level_count: 1,
         format: AttachmentFormat::Rgb8U,
         resample_alg: PreprocessResampleAlg::Bilinear,
+        sparse: true,
     };
 
     let (src_dataset, mut context) = PreprocessContext::from_cli(args).unwrap();
@@ -73,6 +75,7 @@ fn main() {
         mip_level_count: 1,
         format: AttachmentFormat::Rgb8U,
         resample_alg: PreprocessResampleAlg::Bilinear,
+        sparse: true,
     };
 
     let (src_dataset, mut context) = PreprocessContext::from_cli(args).unwrap();

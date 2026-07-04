@@ -46,6 +46,8 @@ pub struct Cli {
     pub format: AttachmentFormat,
     #[arg(long, default_value = "bilinear")]
     pub resample_alg: PreprocessResampleAlg,
+    #[arg(long, default_value_t = false)]
+    pub sparse: bool,
 }
 
 pub(crate) struct PreprocessBar<'a> {
