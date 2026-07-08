@@ -16,6 +16,7 @@
 //! which can be used to access the terrain data in shaders.
 
 mod attachment;
+mod events;
 mod gpu_attachment;
 mod gpu_tile_atlas;
 mod tile_atlas;
@@ -24,6 +25,7 @@ mod tile_tree;
 
 pub use self::{
     attachment::{AttachmentConfig, AttachmentFormat, AttachmentLabel},
+    events::{TerrainTileDropped, TerrainTileReady},
     gpu_tile_atlas::GpuTileAtlas,
     tile_atlas::TileAtlas,
     tile_tree::TileTree,
