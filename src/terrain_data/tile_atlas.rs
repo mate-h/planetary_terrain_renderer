@@ -4,7 +4,7 @@ use crate::{
     terrain::TerrainConfig,
     terrain_data::{
         Attachment, AttachmentData, AttachmentLabel, AttachmentTile, AttachmentTileWithData,
-        DefaultLoader, TileTree, TileTreeEntry,
+        DefaultLoader, TerrainTileDropped, TerrainTileReady, TileTree, TileTreeEntry,
     },
     terrain_view::TerrainViewComponents,
 };
@@ -66,6 +66,10 @@ pub struct TileAtlas {
     pub(crate) uploading_tiles: Vec<AttachmentTileWithData>,
     pub(crate) downloading_tiles: Vec<Task<AttachmentTileWithData>>,
     pub(crate) to_load: Vec<AttachmentTile>,
+    /// Tiles that became resident this update, drained into [`TerrainTileReady`] messages.
+    ready_tiles: Vec<(TileCoordinate, u32)>,
+    /// Ready tiles that were evicted this update, drained into [`TerrainTileDropped`] messages.
+    dropped_tiles: Vec<(TileCoordinate, u32)>,
 
     pub(crate) lod_count: u32,
     pub(crate) min_height: f32,
@@ -91,6 +95,8 @@ impl TileAtlas {
             to_load: default(),
             uploading_tiles: default(),
             downloading_tiles: default(),
+            ready_tiles: default(),
+            dropped_tiles: default(),
             lod_count: config.lod_count,
             min_height: config.min_height,
             max_height: config.max_height,
@@ -130,6 +136,10 @@ impl TileAtlas {
 
     pub(crate) fn tile_loaded(&mut self, tile: AttachmentTile, data: AttachmentData) {
         if let Some(tile_state) = self.tile_states.get_mut(&tile.coordinate) {
+            // The last outstanding attachment flips the tile to `Loaded`; that is the
+            // once-per-tile edge at which the tile becomes sampleable.
+            let became_ready = matches!(tile_state.state, LoadingState::Loading(1));
+
             tile_state.state = match tile_state.state {
                 LoadingState::Loading(1) => LoadingState::Loaded,
                 LoadingState::Loading(n) => LoadingState::Loading(n - 1),
@@ -143,8 +153,45 @@ impl TileAtlas {
                 label: tile.label,
                 data,
             });
+
+            if became_ready {
+                self.ready_tiles
+                    .push((tile.coordinate, tile_state.atlas_index));
+            }
         } else {
             dbg!("Tile is no longer loaded.");
+        }
+    }
+
+    /// Drains the pending residency changes into [`TerrainTileReady`] / [`TerrainTileDropped`]
+    /// messages. Runs after [`Self::update`] so both edges of the frame are observed.
+    pub(crate) fn emit_tile_events(
+        mut tile_atlases: Query<(Entity, &mut TileAtlas)>,
+        mut ready_messages: MessageWriter<TerrainTileReady>,
+        mut dropped_messages: MessageWriter<TerrainTileDropped>,
+    ) {
+        for (terrain, mut tile_atlas) in &mut tile_atlases {
+            let TileAtlas {
+                ready_tiles,
+                dropped_tiles,
+                ..
+            } = &mut *tile_atlas;
+
+            ready_messages.write_batch(ready_tiles.drain(..).map(|(coordinate, atlas_index)| {
+                TerrainTileReady {
+                    terrain,
+                    coordinate,
+                    atlas_index,
+                }
+            }));
+
+            dropped_messages.write_batch(dropped_tiles.drain(..).map(
+                |(coordinate, atlas_index)| TerrainTileDropped {
+                    terrain,
+                    coordinate,
+                    atlas_index,
+                },
+            ));
         }
     }
 
@@ -186,8 +233,22 @@ impl TileAtlas {
                 .pop_front()
                 .expect("Atlas out of indices");
 
-            self.tile_states
-                .retain(|_, tile| tile.atlas_index != atlas_index); // remove tile if it is still cached
+            // Remove the tile still cached in this slot. If it was ready, report it
+            // dropped in the same pass so its data is no longer considered available.
+            let Self {
+                tile_states,
+                dropped_tiles,
+                ..
+            } = self;
+            tile_states.retain(|&coordinate, tile| {
+                if tile.atlas_index != atlas_index {
+                    return true;
+                }
+                if matches!(tile.state, LoadingState::Loaded) {
+                    dropped_tiles.push((coordinate, atlas_index));
+                }
+                false
+            });
 
             self.tile_states.insert(
                 tile_coordinate,

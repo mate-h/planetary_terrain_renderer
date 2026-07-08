@@ -11,7 +11,8 @@ use crate::{
     shaders::{InternalShaders, load_terrain_shaders},
     terrain::{TerrainComponents, TerrainConfig},
     terrain_data::{
-        AttachmentLabel, GpuTileAtlas, TileAtlas, TileTree, finish_loading, start_loading,
+        AttachmentLabel, GpuTileAtlas, TerrainTileDropped, TerrainTileReady, TileAtlas, TileTree,
+        finish_loading, start_loading,
     },
     terrain_shadow::{
         TerrainShadowSettings, TerrainShadowUniform, extract_terrain_shadow, update_terrain_shadow,
@@ -79,6 +80,8 @@ impl Plugin for TerrainPlugin {
             .init_resource::<TerrainViewComponents<TerrainShadowUniform>>()
             .init_asset_loader::<TerrainConfigLoader>()
             .init_asset_loader::<TiffLoader>()
+            .add_message::<TerrainTileReady>()
+            .add_message::<TerrainTileDropped>()
             .add_systems(
                 PostUpdate,
                 (
@@ -88,6 +91,7 @@ impl Plugin for TerrainPlugin {
                         TileTree::compute_requests,
                         finish_loading,
                         TileAtlas::update,
+                        TileAtlas::emit_tile_events,
                         start_loading,
                         TileTree::adjust_to_tile_atlas,
                         TileTree::generate_surface_approximation,

@@ -21,18 +21,32 @@ fn compute_sample_uv(tile: AtlasTile, attachment: AttachmentConfig) -> SampleUV 
 }
 #endif
 
-fn sample_height(tile: AtlasTile) -> f32 {
-    let uv = compute_sample_uv(tile, terrain_data.attachments.height);
+// Samples an arbitrary attachment at the tile's coordinate, applying the same LOD / blend
+// handling as height sampling. Pass the attachment's config (`terrain_data.attachments.<label>`)
+// together with its texture global (`<label>_attachment`), e.g.
+//
+//     let density = sample_attachment(terrain_data.attachments.grass_density, grass_density_attachment, tile).x;
+//
+// This uses linear filtering, so it is meant for continuous data (density, blend weights, ...).
+// For integer id attachments, gather the raw texels instead (see `compute_sample_uv` +
+// `textureGather` / `textureLoad`), since filtering would blend distinct ids into meaningless
+// intermediate values.
+fn sample_attachment(attachment: AttachmentConfig, attachment_texture: texture_2d_array<f32>, tile: AtlasTile) -> vec4<f32> {
+    let uv = compute_sample_uv(tile, attachment);
 
 #ifdef FRAGMENT
 #ifdef SAMPLE_GRAD
-    return terrain_data.terrain.height_scale * textureSampleGrad(height_attachment, terrain_sampler, uv.uv, tile.index, uv.dx, uv.dy).x;
+    return textureSampleGrad(attachment_texture, terrain_sampler, uv.uv, tile.index, uv.dx, uv.dy);
 #else
-    return terrain_data.terrain.height_scale * textureSampleLevel(height_attachment, terrain_sampler, uv.uv, tile.index, tile.blend_ratio).x;
+    return textureSampleLevel(attachment_texture, terrain_sampler, uv.uv, tile.index, tile.blend_ratio);
 #endif
 #else
-    return terrain_data.terrain.height_scale * textureSampleLevel(height_attachment, terrain_sampler, uv.uv, tile.index, 0.0).x;
+    return textureSampleLevel(attachment_texture, terrain_sampler, uv.uv, tile.index, 0.0);
 #endif
+}
+
+fn sample_height(tile: AtlasTile) -> f32 {
+    return terrain_data.terrain.height_scale * sample_attachment(terrain_data.attachments.height, height_attachment, tile).x;
 }
 
 fn sample_height_mask(tile: AtlasTile) -> bool {
