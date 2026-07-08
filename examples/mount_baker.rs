@@ -64,7 +64,7 @@ struct MountBakerMaterial {}
 
 impl Material for MountBakerMaterial {
     fn fragment_shader() -> ShaderRef {
-        "shaders/atmosphere.wgsl".into()
+        "embedded://bevy_terrain/shaders/render/fragment.wgsl".into()
     }
 }
 

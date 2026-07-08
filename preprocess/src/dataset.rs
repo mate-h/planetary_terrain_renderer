@@ -105,6 +105,8 @@ pub struct PreprocessContext {
     pub(crate) sparse: bool,
     pub(crate) tile_manifest: Option<Vec<TileCoordinate>>,
     pub(crate) src_path: PathBuf,
+    pub(crate) planar: bool,
+    pub(crate) side_length: Option<f64>,
 }
 
 impl PreprocessContext {
@@ -126,7 +128,18 @@ impl PreprocessContext {
             format,
             resample_alg,
             sparse,
+            planar,
+            side_length,
         } = args;
+
+        if planar && side_length.is_none() {
+            return Err(PreprocessError::SideLengthRequired);
+        }
+        if let Some(side_length) = side_length
+            && side_length <= 0.0
+        {
+            return Err(PreprocessError::InvalidSideLength);
+        }
 
         PreprocessContext::initialize(
             terrain_path,
@@ -149,6 +162,8 @@ impl PreprocessContext {
             resample_alg,
             sparse,
             None,
+            planar,
+            side_length,
         )
     }
 
@@ -170,6 +185,8 @@ impl PreprocessContext {
         resample_alg: PreprocessResampleAlg,
         sparse: bool,
         tile_manifest: Option<Vec<TileCoordinate>>,
+        planar: bool,
+        side_length: Option<f64>,
     ) -> PreprocessResult<(Dataset, Self)> {
         let mut src_datasets: Vec<Dataset> = src_path
             .iter()
@@ -264,6 +281,8 @@ impl PreprocessContext {
                 sparse,
                 tile_manifest,
                 src_path,
+                planar,
+                side_length,
             },
         ))
     }

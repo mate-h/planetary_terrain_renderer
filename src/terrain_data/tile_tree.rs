@@ -1,4 +1,5 @@
 use crate::{
+    floating_origin::view_local_position,
     math::{Coordinate, TerrainShape, TileCoordinate},
     render::{TerrainViewUniform, TileTreeUniform},
     terrain::TerrainConfig,
@@ -15,6 +16,7 @@ use bevy::{
         storage::ShaderBuffer,
     },
 };
+#[cfg(feature = "big_space")]
 use big_space::prelude::{CellCoord, Grids};
 use itertools::{Itertools, iproduct};
 use ndarray::Array4;
@@ -322,6 +324,7 @@ impl TileTree {
 
     /// Traverses all tile_trees and updates the tile states,
     /// while selecting newly requested and released tiles.
+    #[cfg(feature = "big_space")]
     pub(crate) fn compute_requests(
         camera: Query<&Camera>,
         mut tile_trees: ResMut<TerrainViewComponents<TileTree>>,
@@ -330,10 +333,7 @@ impl TileTree {
     ) {
         for (&(_, view), tile_tree) in tile_trees.iter_mut() {
             let camera = camera.get(view).unwrap();
-            let grid = grids.parent_grid(view).unwrap();
             let (global_transform, transform, cell) = views.get(view).unwrap();
-
-            // Todo: transform should be global transform?
 
             let clip_from_view = camera.clip_from_view();
             let world_from_view = global_transform.to_matrix();
@@ -343,7 +343,32 @@ impl TileTree {
                 .half_spaces
                 .map(|space| space.normal_d());
 
-            tile_tree.view_local_position = grid.grid_position_double(cell, transform);
+            tile_tree.view_local_position = view_local_position(&grids, view, transform, cell);
+            tile_tree.view_world_position = transform.translation;
+            tile_tree.half_spaces = half_spaces;
+            tile_tree.update();
+        }
+    }
+
+    #[cfg(not(feature = "big_space"))]
+    pub(crate) fn compute_requests(
+        camera: Query<&Camera>,
+        mut tile_trees: ResMut<TerrainViewComponents<TileTree>>,
+        views: Query<(&GlobalTransform, &Transform)>,
+    ) {
+        for (&(_, view), tile_tree) in tile_trees.iter_mut() {
+            let camera = camera.get(view).unwrap();
+            let (global_transform, transform) = views.get(view).unwrap();
+
+            let clip_from_view = camera.clip_from_view();
+            let world_from_view = global_transform.to_matrix();
+            let clip_from_world = clip_from_view * world_from_view.inverse();
+
+            let half_spaces = ViewFrustum::from_clip_from_world(&clip_from_world)
+                .half_spaces
+                .map(|space| space.normal_d());
+
+            tile_tree.view_local_position = view_local_position(global_transform);
             tile_tree.view_world_position = transform.translation;
             tile_tree.half_spaces = half_spaces;
             tile_tree.update();

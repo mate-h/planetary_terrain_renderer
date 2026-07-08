@@ -44,10 +44,12 @@
 //! [^note]: Some of these claims are not yet fully implemented.
 
 pub mod debug;
+mod floating_origin;
 pub mod formats;
 pub mod math;
 mod metal_capture_env;
 pub mod picking;
+pub mod planar_atmosphere;
 pub mod plugin;
 pub mod preprocess;
 pub mod render;
@@ -65,13 +67,13 @@ pub use metal_capture_env::prepare_metal_capture;
 pub mod prelude {
     //! `use bevy_terrain::prelude::*;` to import common components, bundles, and plugins.
 
+    #[cfg(feature = "big_space")]
+    pub use crate::debug::{DebugCameraController, OrbitalCameraController};
     pub use crate::{
-        debug::{
-            DebugCameraController, DebugTerrainMaterial, LoadingImages, OrbitalCameraController,
-            TerrainDebugPlugin,
-        },
+        debug::{DebugTerrainMaterial, LoadingImages, TerrainDebugPlugin},
         math::{TerrainShape, TileCoordinate},
         picking::{PickingData, TerrainPickingPlugin},
+        planar_atmosphere::{PlanarAtmospherePlugin, PlanarAtmosphereSettings},
         plugin::{TerrainPlugin, TerrainSettings},
         prepare_metal_capture,
         // preprocess::{PreprocessDataset, Preprocessor, SphericalDataset, TerrainPreprocessPlugin},
@@ -84,6 +86,7 @@ pub mod prelude {
         terrain_shadow::TerrainShadowSettings,
         terrain_view::{TerrainViewComponents, TerrainViewConfig},
     };
+    #[cfg(feature = "big_space")]
     pub use big_space::{
         commands::BigSpaceCommands,
         grid::Grid,

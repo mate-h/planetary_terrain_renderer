@@ -18,6 +18,8 @@ members = ["preprocess"]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("webgpu"))'] }
 
 [features]
+default = ["big_space"]
+big_space = ["dep:big_space"]
 rand = ["dep:rand"]
 metal_capture = []
 bluenoise_texture = ["bevy/bluenoise_texture"]
@@ -25,7 +27,7 @@ atmosphere_example = ["bevy/free_camera", "bevy/https", "bevy/tonemapping_luts"]
 
 [dependencies]
 bevy = { git = "https://github.com/mate-h/bevy", branch = "m/outdoor-scene", default-features = false, features = ["3d"] }
-big_space = { git = "https://github.com/mate-h/big_space", branch = "bevy-0.20", features = ["i32"] }
+big_space = { git = "https://github.com/mate-h/big_space", branch = "bevy-0.20", features = ["i32"], optional = true }
 tiff = "0.10"
 bytemuck = "1.14"
 ndarray = "0.16.1"
@@ -41,6 +43,11 @@ strum_macros = "0.27.1"
 
 rand = { version = "0.9.0", optional = true }
 # wgpu-core optional dep removed for Bevy 0.20 workspace compatibility; re-add with patched git when metal_capture is needed
+
+[[example]]
+name = "planar_world"
+path = "examples/planar_world.rs"
+required-features = ["atmosphere_example"]
 
 [[example]]
 name = "spherical"

@@ -197,6 +197,7 @@ fn warp_tile<T: Copy + GdalType + PartialEq + NumCast>(
         src,
         tile_coordinate.face,
         Some(tile_geo_transform(tile_coordinate, context)),
+        context.planar,
     )?;
 
     let tile_dataset = create_tile_dataset::<T>(tile_coordinate, context)?;

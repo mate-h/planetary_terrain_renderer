@@ -28,8 +28,10 @@ use bevy::{
     transform::TransformSystems,
     window::PrimaryWindow,
 };
+#[cfg(feature = "big_space")]
 use big_space::prelude::CellCoord;
 
+#[cfg(feature = "big_space")]
 pub fn picking_system(
     mut buffers: ResMut<Assets<ShaderBuffer>>,
     window: Query<&Window, With<PrimaryWindow>>,
@@ -56,6 +58,33 @@ pub fn picking_system(
     }
 }
 
+#[cfg(not(feature = "big_space"))]
+pub fn picking_system(
+    mut buffers: ResMut<Assets<ShaderBuffer>>,
+    window: Query<&Window, With<PrimaryWindow>>,
+    camera: Query<(&Camera, &GlobalTransform, &PickingData)>,
+) {
+    let Ok(window) = window.single() else {
+        return;
+    };
+    let Some(position) = window.cursor_position() else {
+        return;
+    };
+    let cursor_coords = Vec2::new(position.x, window.size().y - position.y) / window.size();
+
+    for (camera, global_transform, picking_data) in &camera {
+        let mut buffer = buffers.get_mut(&picking_data.buffer).unwrap();
+        let data = GpuPickingData {
+            cursor_coords,
+            depth: 0.0,
+            stencil: 255,
+            world_from_clip: global_transform.to_matrix() * camera.clip_from_view().inverse(),
+            cell: IVec3::ZERO,
+        };
+        buffer.set_data(data);
+    }
+}
+
 pub fn picking_readback(on: On<ReadbackComplete>, mut picking_data: Query<&mut PickingData>) {
     let GpuPickingData {
         cursor_coords,
@@ -69,13 +98,16 @@ pub fn picking_readback(on: On<ReadbackComplete>, mut picking_data: Query<&mut P
 
     let mut picking_data = picking_data.get_mut(on.event().entity).unwrap();
     picking_data.cursor_coords = cursor_coords;
-    picking_data.cell = CellCoord::new(cell.x, cell.y, cell.z);
+    #[cfg(feature = "big_space")]
+    {
+        picking_data.cell = CellCoord::new(cell.x, cell.y, cell.z);
+    }
+    #[cfg(not(feature = "big_space"))]
+    {
+        picking_data.cell = cell;
+    }
     picking_data.translation = (depth > 0.0).then(|| world_from_clip.project_point3(ndc_coords));
     picking_data.world_from_clip = world_from_clip;
-
-    // dbg!(cursor_coords);
-    // dbg!(1.0 / depth);
-    // dbg!(stencil);
 }
 
 pub fn picking_hook(mut world: DeferredWorld, context: HookContext) {
@@ -101,8 +133,11 @@ pub fn picking_hook(mut world: DeferredWorld, context: HookContext) {
 #[component(on_add = picking_hook)]
 pub struct PickingData {
     pub cursor_coords: Vec2,
-    pub cell: CellCoord,           // cell of floating origin (camera)
-    pub translation: Option<Vec3>, // relative to floating origin cell
+    #[cfg(feature = "big_space")]
+    pub cell: CellCoord,
+    #[cfg(not(feature = "big_space"))]
+    pub cell: IVec3,
+    pub translation: Option<Vec3>,
     pub world_from_clip: Mat4,
     buffer: Handle<ShaderBuffer>,
 }

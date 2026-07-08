@@ -51,6 +51,36 @@ impl TerrainShape {
         if self.is_spherical() { 6 } else { 1 }
     }
 
+    /// Returns atmosphere radii and an initial planet-center transform for a flat map
+    /// centered at the origin, with the planet north pole aligned to world `(0, 0, 0)` at `+Y`.
+    ///
+    /// At runtime, call [`planar_atmosphere_center`] each frame with the camera's horizontal
+    /// position so the spherical atmosphere stays tangent to the flat terrain (+Y up).
+    pub fn planar_atmosphere_alignment(
+        min_height: f32,
+        reference_minor_axis: f64,
+        atmosphere_shell: f32,
+    ) -> (f32, f32, Transform) {
+        let inner_radius = (reference_minor_axis - min_height as f64) as f32;
+        let outer_radius = inner_radius + atmosphere_shell;
+        let transform = Transform::from_translation(Self::planar_atmosphere_center(
+            min_height,
+            inner_radius,
+            Vec2::ZERO,
+        ));
+        (inner_radius, outer_radius, transform)
+    }
+
+    /// Planet center for a flat map with +Y up and the inner atmosphere sphere tangent at
+    /// `horizontal` on the terrain reference height `surface_height`.
+    pub fn planar_atmosphere_center(
+        surface_height: f32,
+        inner_radius: f32,
+        horizontal: Vec2,
+    ) -> Vec3 {
+        Vec3::new(horizontal.x, surface_height - inner_radius, horizontal.y)
+    }
+
     pub fn position_unit_to_local(self, unit_position: DVec3, height: f64) -> DVec3 {
         let local_position = self.scale() * unit_position;
         let local_normal = (self.scale()

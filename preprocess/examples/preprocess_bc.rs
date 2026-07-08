@@ -28,6 +28,8 @@ fn main() {
         format: AttachmentFormat::R32F,
         resample_alg: PreprocessResampleAlg::Bilinear,
         sparse: true,
+        planar: false,
+        side_length: None,
     };
 
     let (src_dataset, mut context) = PreprocessContext::from_cli(args).unwrap();
@@ -54,6 +56,8 @@ fn main() {
         format: AttachmentFormat::Rgb8U,
         resample_alg: PreprocessResampleAlg::Bilinear,
         sparse: true,
+        planar: false,
+        side_length: None,
     };
 
     let (src_dataset, mut context) = PreprocessContext::from_cli(args).unwrap();
@@ -76,6 +80,8 @@ fn main() {
         format: AttachmentFormat::Rgb8U,
         resample_alg: PreprocessResampleAlg::Bilinear,
         sparse: true,
+        planar: false,
+        side_length: None,
     };
 
     let (src_dataset, mut context) = PreprocessContext::from_cli(args).unwrap();

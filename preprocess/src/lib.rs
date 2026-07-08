@@ -130,7 +130,13 @@ fn save_terrain_config(tiles: Vec<TileCoordinate>, context: &PreprocessContext) 
 
     let mut config = TerrainConfig::load_file(&file_path).unwrap_or_default();
 
-    config.shape = TerrainShape::WGS84;
+    config.shape = if context.planar {
+        TerrainShape::Plane {
+            side_length: context.side_length.unwrap(),
+        }
+    } else {
+        TerrainShape::WGS84
+    };
     config.path = context.terrain_path.to_str().unwrap().to_string();
     config.add_attachment(context.attachment_label.clone(), context.attachment.clone());
 

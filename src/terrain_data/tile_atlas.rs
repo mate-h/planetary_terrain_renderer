@@ -14,6 +14,7 @@ use bevy::{
     prelude::*,
     tasks::Task,
 };
+#[cfg(feature = "big_space")]
 use big_space::prelude::CellCoord;
 use std::collections::VecDeque;
 
@@ -54,7 +55,8 @@ struct TileState {
 /// The [`u32`] can be used for accessing the attached data in systems by the CPU
 /// and in shaders by the GPU.
 #[derive(Component)]
-#[require(Transform, CellCoord, Visibility, VisibilityClass, DefaultLoader)]
+#[require(Transform, Visibility, VisibilityClass, DefaultLoader)]
+#[cfg_attr(feature = "big_space", require(CellCoord))]
 #[component(on_add = add_visibility_class::<TileAtlas>)]
 pub struct TileAtlas {
     pub(crate) attachments: HashMap<AttachmentLabel, Attachment>, // stores the attachment data

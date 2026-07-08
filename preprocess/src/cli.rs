@@ -48,6 +48,10 @@ pub struct Cli {
     pub resample_alg: PreprocessResampleAlg,
     #[arg(long, default_value_t = false)]
     pub sparse: bool,
+    #[arg(long, default_value_t = false)]
+    pub planar: bool,
+    #[arg(long)]
+    pub side_length: Option<f64>,
 }
 
 pub(crate) struct PreprocessBar<'a> {

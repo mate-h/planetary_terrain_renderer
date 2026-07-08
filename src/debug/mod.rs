@@ -1,7 +1,9 @@
 //! Contains a debug resource and systems controlling it to visualize different internal
 //! data of the plugin.
+#[cfg(feature = "big_space")]
+use crate::debug::{debug_camera_controller, orbital_camera_controller};
 use crate::{
-    debug::{debug_camera_controller, debug_surface_approximation, orbital_camera_controller},
+    debug::debug_surface_approximation,
     terrain_data::{TileAtlas, TileTree},
     terrain_view::TerrainViewComponents,
 };
@@ -14,11 +16,16 @@ use bevy::{
 };
 
 mod approximation_debug;
+#[cfg(feature = "big_space")]
 mod camera;
+#[cfg(feature = "big_space")]
 mod orbital_camera;
 
-pub(crate) use self::{approximation_debug::*, camera::*, orbital_camera::*};
+pub(crate) use self::approximation_debug::*;
+#[cfg(feature = "big_space")]
 pub use self::{camera::DebugCameraController, orbital_camera::OrbitalCameraController};
+#[cfg(feature = "big_space")]
+pub(crate) use self::{camera::*, orbital_camera::*};
 
 #[cfg(all(feature = "metal_capture", target_vendor = "apple"))]
 mod metal_capture;
@@ -45,14 +52,14 @@ impl Plugin for TerrainDebugPlugin {
                     update_terrain_parameter,
                     update_view_parameter,
                     finish_loading_images,
-                    orbital_camera_controller,
-                    debug_camera_controller,
                 ),
             )
             .add_systems(
                 Last,
                 debug_surface_approximation.after(TileTree::generate_surface_approximation),
             );
+        #[cfg(feature = "big_space")]
+        app.add_systems(Update, (orbital_camera_controller, debug_camera_controller));
         #[cfg(all(feature = "metal_capture", target_vendor = "apple"))]
         app.add_plugins(MetalCapturePlugin);
 
