@@ -42,6 +42,8 @@ pub enum AttachmentFormat {
     Rgb8U,
     /// Four channels  8 bit unsigned integer
     Rgba8U,
+    /// One channel   8 bit unsigned integer
+    R8U,
     /// One channel  16 bit unsigned integer
     R16U,
     /// One channel  16 bit integer
@@ -58,6 +60,7 @@ impl FromStr for AttachmentFormat {
         match s.trim() {
             "rg8u" => Ok(Self::Rgb8U),
             "rgba8u" => Ok(Self::Rgba8U),
+            "r8u" => Ok(Self::R8U),
             "r16u" => Ok(Self::R16U),
             "r16i" => Ok(Self::R16I),
             "r32f" => Ok(Self::R32F),
@@ -71,6 +74,7 @@ impl AttachmentFormat {
         match self {
             AttachmentFormat::Rgb8U => TextureFormat::Rgba8UnormSrgb,
             AttachmentFormat::Rgba8U => TextureFormat::Rgba8UnormSrgb,
+            AttachmentFormat::R8U => TextureFormat::R8Unorm,
             AttachmentFormat::R16U => TextureFormat::R16Unorm,
             AttachmentFormat::R16I => TextureFormat::R16Snorm,
             AttachmentFormat::Rg16U => TextureFormat::Rg16Unorm,
@@ -82,6 +86,7 @@ impl AttachmentFormat {
         match self {
             AttachmentFormat::Rgb8U => TextureFormat::Rgba8Unorm,
             AttachmentFormat::Rgba8U => TextureFormat::Rgba8Unorm,
+            AttachmentFormat::R8U => TextureFormat::R8Uint,
             AttachmentFormat::R16U => TextureFormat::R16Uint,
             AttachmentFormat::R16I => TextureFormat::R16Uint,
             AttachmentFormat::Rg16U => TextureFormat::Rg16Uint,
@@ -93,6 +98,7 @@ impl AttachmentFormat {
         match self {
             AttachmentFormat::Rgb8U => 4,
             AttachmentFormat::Rgba8U => 4,
+            AttachmentFormat::R8U => 1,
             AttachmentFormat::R16U => 2,
             AttachmentFormat::R16I => 2,
             AttachmentFormat::Rg16U => 4,
@@ -142,6 +148,8 @@ pub enum AttachmentData {
     // Rgb8(Vec<(u8, u8, u8)>), Can not be represented currently
     /// Four  channels  8 bit
     Rgba8U(Vec<[u8; 4]>),
+    /// One   channel   8 bit
+    R8U(Vec<u8>),
     /// One   channel  16 bit
     R16U(Vec<u16>),
     /// One   channel  16 bit
@@ -160,6 +168,7 @@ impl AttachmentData {
                     .collect_vec(),
             ),
             AttachmentFormat::Rgba8U => Self::Rgba8U(cast_slice(data).to_vec()),
+            AttachmentFormat::R8U => Self::R8U(data.to_vec()),
             AttachmentFormat::R16U => Self::R16U(cast_slice(data).to_vec()),
             AttachmentFormat::R16I => Self::R16I(cast_slice(data).to_vec()),
             AttachmentFormat::Rg16U => Self::Rg16U(cast_slice(data).to_vec()),
@@ -170,6 +179,7 @@ impl AttachmentData {
     pub(crate) fn bytes(&self) -> &[u8] {
         match self {
             AttachmentData::Rgba8U(data) => cast_slice(data),
+            AttachmentData::R8U(data) => cast_slice(data),
             AttachmentData::R16U(data) => cast_slice(data),
             AttachmentData::R16I(data) => cast_slice(data),
             AttachmentData::Rg16U(data) => cast_slice(data),

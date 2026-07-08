@@ -5,6 +5,8 @@
 @group(0) @binding(2) var child_texture: texture_storage_2d_array<rgba8unorm, write>;
 #else ifdef RGBA8U 
 @group(0) @binding(2) var child_texture: texture_storage_2d_array<rgba8unorm, write>;
+#else ifdef R8U
+@group(0) @binding(2) var child_texture: texture_storage_2d_array<r8uint, write>;
 #else ifdef R16U
 @group(0) @binding(2) var child_texture: texture_storage_2d_array<r16uint, write>;
 #else ifdef R16I
@@ -27,6 +29,9 @@ fn main(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 #ifdef R32F
     let data = 0.25 * (data00.x + data01.x + data10.x + data11.x);
     textureStore(child_texture, coord, index, vec4<f32>(data, 0.0, 0.0, 0.0));
+#else ifdef R8U
+    let data = 0.25 * (data00.x + data01.x + data10.x + data11.x);
+    textureStore(child_texture, coord, index, vec4<u32>(u32(data * 255.0), 0u, 0u, 0u));
 #else ifdef R16U
     let data = 0.25 * (data00.x + data01.x + data10.x + data11.x);
     textureStore(child_texture, coord, index, vec4<u32>(u32(data * 65535.0), 0u, 0u, 0u));
