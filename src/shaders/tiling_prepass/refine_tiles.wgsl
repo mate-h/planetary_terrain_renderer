@@ -81,6 +81,16 @@ fn frustum_cull_sphere(coordinate: Coordinate) -> bool {
 }
 
 fn horizon_cull(coordinate: Coordinate, world_coordinate: WorldCoordinate) -> bool {
+#ifndef SPHERICAL
+    // Planar terrain has no horizon to cull against. The sphere/ellipsoid
+    // test below divides `min_height` by `scale.y`, which is 1.0 for a
+    // plane (vs the planet's minor axis on a sphere): `radius` becomes
+    // `1 + min_height` (~-642 for this world), and the cull rejects 100% of
+    // LOD>=3 tiles whenever the camera is below ~|min_height| altitude —
+    // making the whole terrain invisible at ground level. Skip it; frustum
+    // + no-data culling still apply.
+    return false;
+#else
     // Todo: implement high precision supprot for culling
     if (coordinate.lod < 3) { return false; }
     // up to LOD 3, the closest point estimation is not reliable when projecting to adjacent sides
@@ -110,6 +120,7 @@ fn horizon_cull(coordinate: Coordinate, world_coordinate: WorldCoordinate) -> bo
 
     // cull tile, if it is behind the horizon plane and it is inside the horizon cone
     return (vo_vt > vh_vh) && (vo_vt * vo_vt > vh_vh * vt_vt);
+#endif
 }
 
 fn no_data_cull(coordinate: Coordinate, world_coordinate: WorldCoordinate) -> bool {

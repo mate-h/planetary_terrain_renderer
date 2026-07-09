@@ -74,7 +74,7 @@ impl Default for TileTreeEntry {
 }
 
 #[derive(Component)]
-pub struct TerrainViewKey((Entity, Entity));
+pub struct TerrainViewKey(pub (Entity, Entity));
 
 /// A quadtree-like view of a terrain, that requests and releases tiles from the [`TileAtlas`]
 /// depending on the distance to the viewer.
@@ -428,8 +428,14 @@ impl TileTree {
         mut tile_trees: ResMut<TerrainViewComponents<TileTree>>,
     ) {
         let entity = on.event().entity;
-        let TerrainViewKey(terrain_view) = terrain_view.get(entity).unwrap();
-        let tile_tree = tile_trees.get_mut(terrain_view).unwrap();
+        // A readback queued before the terrain despawned can still complete
+        // after its tile tree is gone.
+        let Ok(TerrainViewKey(terrain_view)) = terrain_view.get(entity) else {
+            return;
+        };
+        let Some(tile_tree) = tile_trees.get_mut(terrain_view) else {
+            return;
+        };
         tile_tree.approximate_height = on.event().to_shader_type();
     }
 }

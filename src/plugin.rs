@@ -4,21 +4,23 @@ use crate::{
     preprocess::{MipPipelines, mip_prepass},
     render::{
         DepthCopyPipeline, GpuTerrain, GpuTerrainShadow, GpuTerrainView, TerrainItem,
-        TerrainShadowPipelines, TerrainTilingPrepassPipelines, TerrainUniform, TilingPrepassItem,
-        extract_terrain_phases, extract_terrain_uniform, prepare_terrain_depth_textures,
-        queue_tiling_prepass, terrain_pass, terrain_shadow_pass, tiling_prepass,
+        TerrainMotionPipeline, TerrainShadowPipelines, TerrainTilingPrepassPipelines,
+        TerrainUniform, TilingPrepassItem, extract_terrain_phases, extract_terrain_uniform,
+        prepare_terrain_depth_textures, prepare_terrain_motion_bind_groups, queue_tiling_prepass,
+        terrain_motion_pass, terrain_pass, terrain_shadow_pass, tiling_prepass,
     },
     shaders::{InternalShaders, load_terrain_shaders},
     terrain::{TerrainComponents, TerrainConfig},
     terrain_data::{
-        AttachmentLabel, GpuTileAtlas, TerrainTileDropped, TerrainTileReady, TileAtlas, TileTree,
-        finish_loading, start_loading,
+        AttachmentLabel, GpuTileAtlas, TerrainTileDropped, TerrainTileReady, TerrainViewKey,
+        TileAtlas, TileTree, finish_loading, start_loading,
     },
     terrain_shadow::{
         TerrainShadowSettings, TerrainShadowUniform, extract_terrain_shadow, update_terrain_shadow,
     },
     terrain_view::TerrainViewComponents,
 };
+use bevy::ecs::entity::EntityHashSet;
 use bevy::transform::TransformSystems;
 use bevy::{
     core_pipeline::{
@@ -27,7 +29,7 @@ use bevy::{
     },
     prelude::*,
     render::{
-        Render, RenderApp, RenderSystems,
+        Extract, Render, RenderApp, RenderSystems,
         render_phase::{DrawFunctions, ViewSortedRenderPhases, sort_phase_system},
         render_resource::*,
         renderer::RenderGraph,
@@ -65,6 +67,55 @@ impl TerrainSettings {
     }
 }
 
+/// Drop the per-terrain state of terrains whose entity has been despawned.
+/// Several resources are keyed by terrain entity and are never otherwise
+/// pruned, so without this a despawned terrain leaks its `TileTree` and
+/// `TileAtlas::update` panics looking the entity up.
+fn cleanup_despawned_terrains(
+    mut commands: Commands,
+    mut tile_trees: ResMut<TerrainViewComponents<TileTree>>,
+    mut shadow_uniforms: ResMut<TerrainViewComponents<TerrainShadowUniform>>,
+    terrains: Query<Entity, With<TileAtlas>>,
+    readbacks: Query<(Entity, &TerrainViewKey)>,
+) {
+    let live: EntityHashSet = terrains.iter().collect();
+    tile_trees.retain(|(terrain, _view), _| live.contains(terrain));
+    shadow_uniforms.retain(|(terrain, _view), _| live.contains(terrain));
+
+    // `TileTree::new` spawns a standalone `Readback` entity per tile tree.
+    // It is not a child of the terrain, so despawning the terrain leaves it
+    // reading back a buffer for a tile tree that no longer exists.
+    for (entity, &TerrainViewKey((terrain, _view))) in &readbacks {
+        if !live.contains(&terrain) {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+/// Render-world half of [`cleanup_despawned_terrains`]. Runs before the
+/// `initialize` systems so a terrain respawned in the same frame does not
+/// inherit the old entity's GPU state, and so the terrain phase stops
+/// drawing a terrain whose entity is gone.
+fn cleanup_despawned_gpu_terrains(
+    mut gpu_tile_atlases: ResMut<TerrainComponents<GpuTileAtlas>>,
+    mut gpu_terrains: ResMut<TerrainComponents<GpuTerrain>>,
+    mut terrain_uniforms: ResMut<TerrainComponents<TerrainUniform>>,
+    mut gpu_terrain_views: ResMut<TerrainViewComponents<GpuTerrainView>>,
+    mut gpu_terrain_shadows: ResMut<TerrainViewComponents<GpuTerrainShadow>>,
+    mut shadow_uniforms: ResMut<TerrainViewComponents<TerrainShadowUniform>>,
+    mut tiling_prepass_items: ResMut<TerrainViewComponents<TilingPrepassItem>>,
+    terrains: Extract<Query<Entity, With<TileAtlas>>>,
+) {
+    let live: EntityHashSet = terrains.iter().collect();
+    gpu_tile_atlases.retain(|terrain, _| live.contains(terrain));
+    gpu_terrains.retain(|terrain, _| live.contains(terrain));
+    terrain_uniforms.retain(|terrain, _| live.contains(terrain));
+    gpu_terrain_views.retain(|(terrain, _view), _| live.contains(terrain));
+    gpu_terrain_shadows.retain(|(terrain, _view), _| live.contains(terrain));
+    shadow_uniforms.retain(|(terrain, _view), _| live.contains(terrain));
+    tiling_prepass_items.retain(|(terrain, _view), _| live.contains(terrain));
+}
+
 /// The plugin for the terrain renderer.
 pub struct TerrainPlugin;
 
@@ -88,6 +139,7 @@ impl Plugin for TerrainPlugin {
                     // Todo: enable visibility checking again
                     // check_visibility::<With<TileAtlas>>.in_set(VisibilitySystems::CheckVisibility),
                     (
+                        cleanup_despawned_terrains,
                         TileTree::compute_requests,
                         finish_loading,
                         TileAtlas::update,
@@ -127,8 +179,10 @@ impl Plugin for TerrainPlugin {
                     GpuTerrain::initialize.after(GpuTileAtlas::initialize),
                     GpuTerrainView::initialize,
                     GpuTerrainShadow::initialize,
-                ),
+                )
+                    .after(cleanup_despawned_gpu_terrains),
             )
+            .add_systems(ExtractSchedule, cleanup_despawned_gpu_terrains)
             .add_systems(
                 Render,
                 (
@@ -143,6 +197,7 @@ impl Plugin for TerrainPlugin {
                         .in_set(RenderSystems::PrepareBindGroups),
                     sort_phase_system::<TerrainItem>.in_set(RenderSystems::PhaseSort),
                     prepare_terrain_depth_textures.in_set(RenderSystems::PrepareResources),
+                    prepare_terrain_motion_bind_groups.in_set(RenderSystems::PrepareBindGroups),
                     (
                         queue_tiling_prepass,
                         GpuTileAtlas::queue,
@@ -160,8 +215,13 @@ impl Plugin for TerrainPlugin {
             )
             .add_systems(
                 Core3d,
-                terrain_pass
-                    .before(main_opaque_pass_3d)
+                (
+                    terrain_pass.before(main_opaque_pass_3d),
+                    // Runs after the opaque meshes so the final scene depth
+                    // is complete — it masks terrain motion vectors against
+                    // it. Still before the temporal upscaler consumes them.
+                    terrain_motion_pass.after(main_opaque_pass_3d),
+                )
                     .in_set(Core3dSystems::MainPass),
             );
     }
@@ -179,6 +239,8 @@ impl Plugin for TerrainPlugin {
             .init_resource::<TerrainTilingPrepassPipelines>()
             .init_resource::<TerrainShadowPipelines>()
             .init_resource::<MipPipelines>()
-            .init_resource::<DepthCopyPipeline>();
+            .init_resource::<DepthCopyPipeline>()
+            .init_resource::<SpecializedRenderPipelines<DepthCopyPipeline>>()
+            .init_resource::<TerrainMotionPipeline>();
     }
 }

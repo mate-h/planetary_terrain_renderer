@@ -86,7 +86,13 @@ impl AttachmentFormat {
         match self {
             AttachmentFormat::Rgb8U => TextureFormat::Rgba8Unorm,
             AttachmentFormat::Rgba8U => TextureFormat::Rgba8Unorm,
-            AttachmentFormat::R8U => TextureFormat::R8Uint,
+            // Unorm, not Uint: the atlas texture is created with this format
+            // and lists `render_format` in `view_formats`, which wgpu only
+            // accepts when the two differ by at most the sRGB suffix. It is
+            // also bound as a filterable `texture_2d_array<f32>` by the mip
+            // pass and sampled through a `FilterMode::Linear` sampler, both
+            // of which a Uint format forbids.
+            AttachmentFormat::R8U => TextureFormat::R8Unorm,
             AttachmentFormat::R16U => TextureFormat::R16Uint,
             AttachmentFormat::R16I => TextureFormat::R16Uint,
             AttachmentFormat::Rg16U => TextureFormat::Rg16Uint,
