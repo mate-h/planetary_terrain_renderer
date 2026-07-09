@@ -34,6 +34,12 @@ pub struct GpuTileAtlas {
 impl GpuTileAtlas {
     pub(crate) fn generate_mip(&self, pass: &mut ComputePass, pipeline_cache: &PipelineCache) {
         for attachment in self.attachments.values() {
+            // Mip-less attachments never queue a pipeline; skipping them here
+            // keeps one from aborting mip generation for the others.
+            if attachment.buffer_info.mip_level_count <= 1 {
+                continue;
+            }
+
             let Some(pipeline) = pipeline_cache.get_compute_pipeline(attachment.mip_pipeline)
             else {
                 dbg!("Skipped mipmap generation");
@@ -160,6 +166,12 @@ impl GpuTileAtlas {
     ) {
         for gpu_tile_atlas in gpu_tile_atlases.values_mut() {
             for attachment in gpu_tile_atlas.attachments.values_mut() {
+                // Specializing builds a storage-texture layout of this
+                // attachment's format; skip it when there are no mips.
+                if attachment.buffer_info.mip_level_count <= 1 {
+                    continue;
+                }
+
                 attachment.mip_pipeline = pipelines.specialize(
                     &pipeline_cache,
                     &mip_pipelines,
