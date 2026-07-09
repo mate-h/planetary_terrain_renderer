@@ -496,6 +496,13 @@ pub fn prepare_terrain_motion_bind_groups(
     let layout = pipeline_cache.get_bind_group_layout(&pipeline.layout);
 
     for (entity, terrain_depth) in &views {
+        // Skip bind group creation when the terrain depth
+        // texture is multisampled
+        if terrain_depth.multisampled {
+            commands.entity(entity).remove::<TerrainMotionBindGroup>();
+            continue;
+        }
+                
         // `binding()` is `None` until the (previous-)view uniforms exist,
         // i.e. only on views with the motion vector prepass (DLSS/TAA).
         let (Some(view_binding), Some(prev_binding)) = (
