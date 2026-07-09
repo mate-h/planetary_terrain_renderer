@@ -201,7 +201,11 @@ impl TileAtlas {
         mut tile_atlases: Query<&mut TileAtlas>,
     ) {
         for (&(terrain, _view), tile_tree) in tile_trees.iter_mut() {
-            let mut tile_atlas = tile_atlases.get_mut(terrain).unwrap();
+            // The terrain may have been despawned this frame, before
+            // `cleanup_despawned_terrains` pruned its tile tree.
+            let Ok(mut tile_atlas) = tile_atlases.get_mut(terrain) else {
+                continue;
+            };
 
             for tile_coordinate in tile_tree.released_tiles.drain(..) {
                 tile_atlas.release_tile(tile_coordinate);

@@ -17,7 +17,7 @@ use bevy::{
         ExtractedAtmosphere, MaterialExtractionSystems, MeshPipeline, MeshPipelineSystems,
         MeshPipelineViewLayoutKey, MeshPipelineViewLayouts, RenderMaterialInstance,
         RenderMaterialInstances, RenderViewLightProbes, SetMaterialBindGroup, SetMeshViewBindGroup,
-        SetMeshViewBindingArrayBindGroup,
+        SetMeshViewBindingArrayBindGroup, ViewKeyCache,
     },
     prelude::*,
     render::{
@@ -42,6 +42,10 @@ pub(crate) const TERRAIN_MATERIAL_BIND_GROUP_INDEX: usize = 4;
 pub struct TerrainPipelineKey {
     pub flags: TerrainPipelineFlags,
     pub color_target_format: TextureFormat,
+    /// The mesh-view bind group layout key Bevy computed for this view
+    /// (from [`ViewKeyCache`]). Reused verbatim so the terrain's group-0
+    /// layout always matches the view's `mesh_view_bind_group`.
+    pub view_layout_key: MeshPipelineViewLayoutKey,
 }
 
 bitflags::bitflags! {
@@ -218,32 +222,6 @@ impl TerrainPipelineFlags {
     }
 }
 
-fn terrain_mesh_view_layout_key(
-    multisampled: bool,
-    atmosphere: bool,
-    hdr: bool,
-    environment_map: bool,
-) -> MeshPipelineViewLayoutKey {
-    let mut key = MeshPipelineViewLayoutKey::empty();
-    if multisampled {
-        key |= MeshPipelineViewLayoutKey::MULTISAMPLED;
-    }
-    if atmosphere {
-        key |= MeshPipelineViewLayoutKey::ATMOSPHERE;
-    }
-    if environment_map {
-        key |= MeshPipelineViewLayoutKey::ENVIRONMENT_MAP;
-    }
-    #[cfg(feature = "bluenoise_texture")]
-    {
-        key |= MeshPipelineViewLayoutKey::STBN;
-    }
-    if !hdr {
-        key |= MeshPipelineViewLayoutKey::TONEMAP_IN_SHADER;
-    }
-    key
-}
-
 fn extract_terrain_materials<M: Material>(
     mut material_instances: ResMut<RenderMaterialInstances>,
     terrains: Extract<Query<(Entity, &MeshMaterial3d<M>), With<TileAtlas>>>,
@@ -317,12 +295,7 @@ impl<M: Material> SpecializedRenderPipeline for TerrainRenderPipeline<M> {
             shader_defs.push("MULTISAMPLED".into());
         }
 
-        let view_layout_key = terrain_mesh_view_layout_key(
-            key.flags.msaa_samples() > 1,
-            key.flags.contains(TerrainPipelineFlags::ATMOSPHERE),
-            key.flags.contains(TerrainPipelineFlags::HDR),
-            key.flags.contains(TerrainPipelineFlags::ENVIRONMENT_MAP),
-        );
+        let view_layout_key = key.view_layout_key;
         if self.binding_arrays_are_usable {
             shader_defs.push("MULTIPLE_LIGHT_PROBES_IN_ARRAY".into());
         }
@@ -435,6 +408,7 @@ pub(crate) fn queue_terrain<M: Material>(
     mut terrain_phases: ResMut<ViewSortedRenderPhases<TerrainItem>>,
     gpu_tile_atlases: Res<TerrainComponents<GpuTileAtlas>>,
     gpu_terrain_views: Res<TerrainViewComponents<GpuTerrainView>>,
+    view_key_cache: Res<ViewKeyCache>,
     mut views: Query<(
         MainEntity,
         &Msaa,
@@ -460,6 +434,16 @@ pub(crate) fn queue_terrain<M: Material>(
             let Some(gpu_terrain_view) = gpu_terrain_views.get(&(terrain, view)) else {
                 continue;
             };
+
+            // Reuse the exact mesh-view layout Bevy computed for this view
+            // (prepass slots, atmosphere, env map, STBN, …) so the terrain's
+            // group-0 layout always matches the `mesh_view_bind_group` —
+            // rather than re-deriving it flag by flag, which drifts as views
+            // gain features.
+            let Some(view_key) = view_key_cache.get(&extracted_view.retained_view_entity) else {
+                continue;
+            };
+            let view_layout_key = MeshPipelineViewLayoutKey::from(*view_key);
 
             let mut flags = TerrainPipelineFlags::from_msaa_samples(msaa.samples());
             if gpu_tile_atlas.is_spherical {
@@ -494,6 +478,7 @@ pub(crate) fn queue_terrain<M: Material>(
             let key = TerrainPipelineKey {
                 flags,
                 color_target_format: extracted_view.target_format,
+                view_layout_key,
             };
 
             let pipeline = pipelines.specialize(&pipeline_cache, &terrain_pipeline, key);
