@@ -14,8 +14,9 @@ use crate::{
 use bevy::{
     light::EnvironmentMapLight,
     pbr::{
-        ExtractedAtmosphere, MaterialExtractionSystems, MeshPipeline, MeshPipelineSystems,
-        MeshPipelineViewLayoutKey, MeshPipelineViewLayouts, RenderMaterialInstance,
+        ExtractedAtmosphere, MaterialExtractionSystems, MeshPipeline, MeshPipelineKey,
+        MeshPipelineSystems, MeshPipelineViewLayoutKey, MeshPipelineViewLayouts,
+        RenderMaterialInstance,
         RenderMaterialInstances, RenderViewLightProbes, SetMaterialBindGroup, SetMeshViewBindGroup,
         SetMeshViewBindingArrayBindGroup, ViewKeyCache,
     },
@@ -46,6 +47,11 @@ pub struct TerrainPipelineKey {
     /// (from [`ViewKeyCache`]). Reused verbatim so the terrain's group-0
     /// layout always matches the view's `mesh_view_bind_group`.
     pub view_layout_key: MeshPipelineViewLayoutKey,
+    /// The view's `SHADOW_FILTER_METHOD_*` bits from Bevy's
+    /// [`MeshPipelineKey`], forwarded so `sample_shadow_map` specializes to
+    /// the same filter as the mesh pipeline — with no method defined its
+    /// fallback returns 0.0 (fully shadowed).
+    pub shadow_filter_method: MeshPipelineKey,
 }
 
 bitflags::bitflags! {
@@ -300,6 +306,14 @@ impl<M: Material> SpecializedRenderPipeline for TerrainRenderPipeline<M> {
             shader_defs.push("MULTIPLE_LIGHT_PROBES_IN_ARRAY".into());
         }
 
+        if key.shadow_filter_method == MeshPipelineKey::SHADOW_FILTER_METHOD_HARDWARE_2X2 {
+            shader_defs.push("SHADOW_FILTER_METHOD_HARDWARE_2X2".into());
+        } else if key.shadow_filter_method == MeshPipelineKey::SHADOW_FILTER_METHOD_GAUSSIAN {
+            shader_defs.push("SHADOW_FILTER_METHOD_GAUSSIAN".into());
+        } else if key.shadow_filter_method == MeshPipelineKey::SHADOW_FILTER_METHOD_TEMPORAL {
+            shader_defs.push("SHADOW_FILTER_METHOD_TEMPORAL".into());
+        }
+
         let view_layout = self.mesh_view_layouts.get_view_layout(view_layout_key);
         let mut bind_group_layouts = vec![
             view_layout.main_layout.clone(),
@@ -479,6 +493,8 @@ pub(crate) fn queue_terrain<M: Material>(
                 flags,
                 color_target_format: extracted_view.target_format,
                 view_layout_key,
+                shadow_filter_method: view_key
+                    .intersection(MeshPipelineKey::SHADOW_FILTER_METHOD_RESERVED_BITS),
             };
 
             let pipeline = pipelines.specialize(&pipeline_cache, &terrain_pipeline, key);
