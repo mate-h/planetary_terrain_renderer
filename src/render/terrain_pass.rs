@@ -502,7 +502,7 @@ pub fn prepare_terrain_motion_bind_groups(
             commands.entity(entity).remove::<TerrainMotionBindGroup>();
             continue;
         }
-                
+
         // `binding()` is `None` until the (previous-)view uniforms exist,
         // i.e. only on views with the motion vector prepass (DLSS/TAA).
         let (Some(view_binding), Some(prev_binding)) = (

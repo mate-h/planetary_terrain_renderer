@@ -4,21 +4,26 @@
 //! `cargo run --example atmosphere --features atmosphere_example`
 
 use bevy::{
+    anti_alias::taa::TemporalAntiAliasing,
     asset::io::AssetSourceBuilder,
     camera::{Exposure, Hdr},
     camera_controller::free_camera::{FreeCamera, FreeCameraPlugin, UpAxis},
+    core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass},
     core_pipeline::tonemapping::{GranTurismo7Params, Tonemapping},
     input::keyboard::KeyCode,
     light::{
-        Atmosphere, AtmosphereEnvironmentMapLight, SunDisk, VolumetricLight,
-        atmosphere::ScatteringMedium, light_consts::lux,
+        Atmosphere, AtmosphereEnvironmentMapLight, CascadeShadowConfigBuilder, SunDisk,
+        VolumetricLight, atmosphere::ScatteringMedium, light_consts::lux,
     },
     math::{DVec2, DVec3},
     pbr::{AtmosphereMode, AtmosphereSettings},
     post_process::bloom::Bloom,
     prelude::*,
     reflect::TypePath,
-    render::render_resource::{AsBindGroup, ShaderType},
+    render::{
+        camera::{MipBias, TemporalJitter},
+        render_resource::{AsBindGroup, ShaderType},
+    },
     shader::ShaderRef,
     window::{DisplayTarget, PrimaryWindow},
 };
@@ -46,6 +51,20 @@ const CALIFORNIA_TILE_XY: IVec2 = IVec2::new(91, 1695);
 const CALIFORNIA_MEAN_HEIGHT: f32 = (CALIFORNIA_MIN_HEIGHT + CALIFORNIA_MAX_HEIGHT) * 0.5;
 /// Lod-11 load radius is ~29 km; stay within that so tiles stream in.
 const CALIFORNIA_CAMERA_ALTITUDE: f64 = 15_000.0;
+
+/// Shadow-test spheres: grid over the California tile center.
+const SHADOW_SPHERE_RADIUS: f32 = 80.0;
+const SHADOW_SPHERE_HEIGHT: f64 = 500.0;
+const SHADOW_SPHERE_SPACING: f64 = 500.0;
+const SHADOW_SPHERE_GRID: i32 = 5;
+
+type TaaComponents = (
+    TemporalAntiAliasing,
+    TemporalJitter,
+    MipBias,
+    DepthPrepass,
+    MotionVectorPrepass,
+);
 
 /// Matches the lon/lat convention in `preprocess/src/transformers.rs`.
 fn lat_lon_to_unit_position(lat_deg: f64, lon_deg: f64) -> DVec3 {
@@ -163,7 +182,12 @@ fn main() {
         .add_systems(Startup, (setup_hdr_display, setup_scene, print_controls))
         .add_systems(
             Update,
-            (dynamic_scene, atmosphere_controls, terrain_overlay_controls),
+            (
+                dynamic_scene,
+                atmosphere_controls,
+                terrain_overlay_controls,
+                antialias_controls,
+            ),
         )
         .run();
 }
@@ -179,6 +203,7 @@ fn print_controls() {
     println!("    L          - Toggle WorldCover landcover overlay on/off");
     println!("    I          - Toggle satellite albedo overlay on/off");
     println!("    H          - Toggle HDR display output on/off");
+    println!("    M          - Toggle MSAA 4x / TAA (MSAA off)");
     println!("    Up/Down    - Increase/Decrease exposure");
     println!("    WASD       - Move camera (FreeCamera)");
 }
@@ -289,9 +314,45 @@ fn atmosphere_controls(
     }
 }
 
+fn antialias_controls(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut camera: Query<(Entity, Option<&mut Msaa>, Option<&TemporalAntiAliasing>), With<Camera3d>>,
+    mut commands: Commands,
+) {
+    if !keyboard_input.just_pressed(KeyCode::KeyM) {
+        return;
+    }
+
+    let Ok((entity, msaa, taa)) = camera.single_mut() else {
+        return;
+    };
+
+    if taa.is_some() {
+        if let Some(mut msaa) = msaa {
+            *msaa = Msaa::Sample4;
+        } else {
+            commands.entity(entity).insert(Msaa::Sample4);
+        }
+        commands.entity(entity).remove::<TaaComponents>();
+        println!("Anti-aliasing: MSAA 4x");
+    } else {
+        if let Some(mut msaa) = msaa {
+            *msaa = Msaa::Off;
+        } else {
+            commands.entity(entity).insert(Msaa::Off);
+        }
+        commands
+            .entity(entity)
+            .insert(TemporalAntiAliasing::default());
+        println!("Anti-aliasing: TAA");
+    }
+}
+
 fn setup_scene(
     mut commands: Commands,
     mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
     let earth_medium = scattering_mediums.add(ScatteringMedium::earth(256, 256));
@@ -317,6 +378,14 @@ fn setup_scene(
          (WGS84 minor axis reference: {EARTH_MINOR_RADIUS:.3} m)"
     );
 
+    // Default cascade max distance is 150 m — far too short for planetary scale.
+    let cascade_shadow_config = CascadeShadowConfigBuilder {
+        maximum_distance: 20_000.0,
+        first_cascade_far_bound: 500.0,
+        ..default()
+    }
+    .build();
+
     commands.spawn((
         DirectionalLight {
             shadow_maps_enabled: true,
@@ -325,9 +394,17 @@ fn setup_scene(
             ..default()
         },
         Transform::from_xyz(1.0, 0.4, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
+        cascade_shadow_config,
         VolumetricLight,
         SunDisk::EARTH,
     ));
+
+    let sphere_mesh = meshes.add(Sphere::new(SHADOW_SPHERE_RADIUS).mesh().ico(4).unwrap());
+    let sphere_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.85, 0.35, 0.2),
+        perceptual_roughness: 0.8,
+        ..default()
+    });
 
     let mut view = Entity::PLACEHOLDER;
 
@@ -371,6 +448,32 @@ fn setup_scene(
                 AtmosphereEnvironmentMapLight::default(),
             ))
             .id();
+
+        // Grid of spheres hovering above the terrain to test mesh → terrain shadows.
+        let up_d = up.as_vec3().as_dvec3();
+        let mut east = DVec3::Y.cross(up_d);
+        if east.length_squared() < 1e-8 {
+            east = DVec3::X;
+        }
+        let east = east.normalize();
+        let north = up_d.cross(east).normalize();
+        let half = (SHADOW_SPHERE_GRID - 1) as f64 * 0.5;
+
+        for ix in 0..SHADOW_SPHERE_GRID {
+            for iz in 0..SHADOW_SPHERE_GRID {
+                let offset = east * ((ix as f64 - half) * SHADOW_SPHERE_SPACING)
+                    + north * ((iz as f64 - half) * SHADOW_SPHERE_SPACING);
+                let world = surface + offset + up_d * SHADOW_SPHERE_HEIGHT;
+                let (sphere_cell, sphere_local) =
+                    grid.imprecise_translation_to_grid(world.as_vec3());
+                root.spawn_spatial((
+                    sphere_cell,
+                    Transform::from_translation(sphere_local),
+                    Mesh3d(sphere_mesh.clone()),
+                    MeshMaterial3d(sphere_material.clone()),
+                ));
+            }
+        }
     });
 
     commands.spawn_terrain(

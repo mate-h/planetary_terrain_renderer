@@ -11,6 +11,7 @@
 #import bevy_pbr::mesh_view_bindings::view
 #import bevy_pbr::pbr_types::{PbrInput, pbr_input_new}
 #import bevy_pbr::pbr_functions::{calculate_view, apply_pbr_lighting}
+#import bevy_pbr::mesh_types::MESH_FLAGS_SHADOW_RECEIVER_BIT
 
 struct FragmentInput {
     @builtin(position) clip_position: vec4<f32>,
@@ -87,6 +88,8 @@ fn fragment_output(info: ptr<function, FragmentInfo>, output: ptr<function, Frag
     pbr_input.world_normal                  = (*info).world_coordinate.normal;
     pbr_input.N                             = normalize((*info).world_coordinate.normal - surface_gradient);
     pbr_input.V                             = calculate_view(world_position, pbr_input.is_orthographic);
+    // Receive Bevy cascade / contact shadows from mesh casters (spheres, etc.).
+    pbr_input.flags                         = MESH_FLAGS_SHADOW_RECEIVER_BIT;
 #ifdef TERRAIN_SHADOW
     pbr_input.directional_shadow_factor     = terrain_shadow_factor(world_position.xyz);
 #endif

@@ -16,9 +16,8 @@ use bevy::{
     pbr::{
         ExtractedAtmosphere, MaterialExtractionSystems, MeshPipeline, MeshPipelineKey,
         MeshPipelineSystems, MeshPipelineViewLayoutKey, MeshPipelineViewLayouts,
-        RenderMaterialInstance,
-        RenderMaterialInstances, RenderViewLightProbes, SetMaterialBindGroup, SetMeshViewBindGroup,
-        SetMeshViewBindingArrayBindGroup, ViewKeyCache,
+        RenderMaterialInstance, RenderMaterialInstances, RenderViewLightProbes,
+        SetMaterialBindGroup, SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup, ViewKeyCache,
     },
     prelude::*,
     render::{
