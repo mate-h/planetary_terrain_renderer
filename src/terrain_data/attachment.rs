@@ -42,6 +42,10 @@ pub enum AttachmentFormat {
     Rgb8U,
     /// Four channels  8 bit unsigned integer
     Rgba8U,
+    /// Four channels  8 bit unsigned integer with a linear (non-sRGB) render
+    /// view, for attachments that pack non-color data per channel (ids,
+    /// masks, weights) and fetch it raw.
+    Rgba8ULinear,
     /// One channel   8 bit unsigned integer
     R8U,
     /// One channel  16 bit unsigned integer
@@ -60,6 +64,7 @@ impl FromStr for AttachmentFormat {
         match s.trim() {
             "rg8u" => Ok(Self::Rgb8U),
             "rgba8u" => Ok(Self::Rgba8U),
+            "rgba8u_linear" => Ok(Self::Rgba8ULinear),
             "r8u" => Ok(Self::R8U),
             "r16u" => Ok(Self::R16U),
             "r16i" => Ok(Self::R16I),
@@ -74,6 +79,12 @@ impl AttachmentFormat {
         match self {
             AttachmentFormat::Rgb8U => TextureFormat::Rgba8UnormSrgb,
             AttachmentFormat::Rgba8U => TextureFormat::Rgba8UnormSrgb,
+            // Linear on purpose: packed non-color data read via
+            // `textureLoad`/`textureGather` must come back byte-exact — an
+            // sRGB view would apply the EOTF on fetch. This also matches
+            // `processing_format` below, so mips are generated and rendered
+            // through the same transfer function.
+            AttachmentFormat::Rgba8ULinear => TextureFormat::Rgba8Unorm,
             AttachmentFormat::R8U => TextureFormat::R8Unorm,
             AttachmentFormat::R16U => TextureFormat::R16Unorm,
             AttachmentFormat::R16I => TextureFormat::R16Snorm,
@@ -86,6 +97,7 @@ impl AttachmentFormat {
         match self {
             AttachmentFormat::Rgb8U => TextureFormat::Rgba8Unorm,
             AttachmentFormat::Rgba8U => TextureFormat::Rgba8Unorm,
+            AttachmentFormat::Rgba8ULinear => TextureFormat::Rgba8Unorm,
             // Unorm, not Uint: the atlas texture is created with this format
             // and lists `render_format` in `view_formats`, which wgpu only
             // accepts when the two differ by at most the sRGB suffix. It is
@@ -104,6 +116,7 @@ impl AttachmentFormat {
         match self {
             AttachmentFormat::Rgb8U => 4,
             AttachmentFormat::Rgba8U => 4,
+            AttachmentFormat::Rgba8ULinear => 4,
             AttachmentFormat::R8U => 1,
             AttachmentFormat::R16U => 2,
             AttachmentFormat::R16I => 2,
@@ -174,6 +187,7 @@ impl AttachmentData {
                     .collect_vec(),
             ),
             AttachmentFormat::Rgba8U => Self::Rgba8U(cast_slice(data).to_vec()),
+            AttachmentFormat::Rgba8ULinear => Self::Rgba8U(cast_slice(data).to_vec()),
             AttachmentFormat::R8U => Self::R8U(data.to_vec()),
             AttachmentFormat::R16U => Self::R16U(cast_slice(data).to_vec()),
             AttachmentFormat::R16I => Self::R16I(cast_slice(data).to_vec()),
