@@ -44,6 +44,7 @@ impl MipPipelineKey {
         let format = match self.format {
             AttachmentFormat::Rgb8U => "RGB8U",
             AttachmentFormat::Rgba8U => "RGBA8U",
+            AttachmentFormat::Rgba8ULinear => "RGBA8U",
             AttachmentFormat::R8U => "R8U",
             AttachmentFormat::R16U => "R16U",
             AttachmentFormat::R16I => "R16I",
