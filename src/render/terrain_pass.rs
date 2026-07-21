@@ -28,7 +28,7 @@ use bevy::{
         sync_world::MainEntity,
         texture::{CachedTexture, TextureCache},
         view::{
-            ExtractedView, RetainedViewEntity, ViewDepthTexture, ViewTarget, ViewUniform,
+            ExtractedView, RetainedViewEntity, ViewDepthStencilTexture, ViewTarget, ViewUniform,
             ViewUniformOffset, ViewUniforms,
         },
     },
@@ -333,7 +333,7 @@ pub fn terrain_pass(
         &ExtractedCamera,
         &ExtractedView,
         &ViewTarget,
-        &ViewDepthTexture,
+        &ViewDepthStencilTexture,
         &TerrainViewDepthTexture,
         Option<&MainPassResolutionOverride>,
     )>,
@@ -529,7 +529,7 @@ pub fn terrain_motion_pass(
         &ExtractedCamera,
         &ExtractedView,
         &ViewPrepassTextures,
-        &ViewDepthTexture,
+        &ViewDepthStencilTexture,
         &TerrainViewDepthTexture,
         &TerrainMotionBindGroup,
         &ViewUniformOffset,
@@ -582,7 +582,7 @@ pub fn terrain_motion_pass(
     // (`CORE_3D_DEPTH_FORMAT`).
     if let Some(prepass_depth) = &prepass_textures.depth {
         ctx.command_encoder().copy_texture_to_texture(
-            view_depth.texture.as_image_copy(),
+            view_depth.texture().as_image_copy(),
             prepass_depth.texture.texture.as_image_copy(),
             prepass_textures.size,
         );
