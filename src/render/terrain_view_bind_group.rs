@@ -1,8 +1,8 @@
 use crate::{
     debug::DebugTerrain,
-    math::{TileCoordinate, ViewCoordinate},
+    math::{SurfaceApproximation, TileCoordinate, ViewCoordinate},
     render::{TerrainTilingPrepassPipelines, terrain_shadow::GpuTerrainShadow},
-    terrain_data::{TileTree, TileTreeEntry},
+    terrain_data::TileTree,
     terrain_shadow::TerrainShadowUniform,
     terrain_view::TerrainViewComponents,
 };
@@ -112,13 +112,40 @@ pub(crate) struct PrepassState {
     final_index: i32,
 }
 
-#[derive(Default, ShaderType)]
-pub struct TileTreeUniform {
-    #[shader(size(runtime))]
-    pub(crate) entries: Vec<TileTreeEntry>,
+/// GPU mirror of the WGSL `SurfaceApproximation`: `Vec3A` matches the
+/// 16-byte storage stride of `vec3<f32>` (its fourth lane is padding the
+/// shader never reads). Keeps [`SurfaceApproximation`] a plain math type.
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct GpuSurfaceApproximation {
+    p: Vec3A,
+    p_du: Vec3A,
+    p_dv: Vec3A,
+    p_duu: Vec3A,
+    p_duv: Vec3A,
+    p_dvv: Vec3A,
 }
 
-#[derive(ShaderType)]
+const _: () = assert!(size_of::<GpuSurfaceApproximation>() == 96);
+
+impl From<&SurfaceApproximation> for GpuSurfaceApproximation {
+    fn from(approximation: &SurfaceApproximation) -> Self {
+        GpuSurfaceApproximation {
+            p: approximation.p.into(),
+            p_du: approximation.p_du.into(),
+            p_dv: approximation.p_dv.into(),
+            p_duu: approximation.p_duu.into(),
+            p_duv: approximation.p_duv.into(),
+            p_dvv: approximation.p_dvv.into(),
+        }
+    }
+}
+
+/// Byte-for-byte layout of the WGSL `TerrainView` struct, uploaded raw via
+/// [`ShaderBuffer::extend_from_slice`]. Keep the field order in lockstep
+/// with `shaders/types.wgsl`.
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct TerrainViewUniform {
     tree_size: u32,
     geometry_tile_count: u32,
@@ -135,10 +162,20 @@ pub(crate) struct TerrainViewUniform {
     face: u32,
     lod: u32,
     coordinates: [ViewCoordinate; 6],
-    world_position: Vec3,
+    _pad0: [f32; 2],
+    world_position: Vec3A,
     half_spaces: [Vec4; 6],
-    surface_approximation: [crate::math::SurfaceApproximation; 6],
+    surface_approximation: [GpuSurfaceApproximation; 6],
 }
+
+// The size documents the HIGH_PRECISION layout; without that shader def the
+// WGSL struct ends at `half_spaces` (272) and the buffer tail goes unread.
+// The offsets pin each 16-byte alignment boundary the padding establishes.
+const _: () = assert!(size_of::<TerrainViewUniform>() == 848);
+const _: () = assert!(core::mem::offset_of!(TerrainViewUniform, coordinates) == 56);
+const _: () = assert!(core::mem::offset_of!(TerrainViewUniform, world_position) == 160);
+const _: () = assert!(core::mem::offset_of!(TerrainViewUniform, half_spaces) == 176);
+const _: () = assert!(core::mem::offset_of!(TerrainViewUniform, surface_approximation) == 272);
 
 impl From<&TileTree> for TerrainViewUniform {
     fn from(tile_tree: &TileTree) -> Self {
@@ -160,10 +197,13 @@ impl From<&TileTree> for TerrainViewUniform {
             coordinates: tile_tree
                 .view_coordinates
                 .map(|view_coordinate| ViewCoordinate::new(view_coordinate, tile_tree.view_lod)),
-            world_position: tile_tree.view_world_position,
+            _pad0: [0.0; 2],
+            world_position: tile_tree.view_world_position.into(),
             half_spaces: tile_tree.half_spaces,
-
-            surface_approximation: tile_tree.surface_approximation.clone(),
+            surface_approximation: tile_tree
+                .surface_approximation
+                .each_ref()
+                .map(GpuSurfaceApproximation::from),
         }
     }
 }
